@@ -5,14 +5,54 @@ require('dotenv').config();
 
 const app = express();
 
-// Middleware
-app.use(cors({
-  origin: 'https://code-teach.vercel.app', // Your React app's URL
+// CORS configuration
+const allowedOrigins = [
+  'https://code-teach.vercel.app',
+  'http://localhost:3000',
+  'http://localhost:5173',
+  /\.ngrok-free\.app$/  // Allow all ngrok domains
+];
+
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps, curl, etc.)
+    if (!origin) return callback(null, true);
+    
+    // Check if the origin is allowed
+    const isAllowed = allowedOrigins.some(allowedOrigin => {
+      if (allowedOrigin instanceof RegExp) {
+        return allowedOrigin.test(origin);
+      }
+      return allowedOrigin === origin;
+    });
+
+    if (isAllowed) {
+      callback(null, true);
+    } else {
+      callback(new Error('CORS not allowed'));
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-}));
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'Origin',
+    'Accept',
+    'X-Requested-With',
+    'ngrok-skip-browser-warning'
+  ],
+  exposedHeaders: ['Content-Length', 'X-Request-Id'],
+  preflightContinue: false,
+  optionsSuccessStatus: 204,
+  maxAge: 86400 // 24 hours
+};
+
+// Apply CORS middleware
+app.use(cors(corsOptions));
+
 app.use(express.json());
+
 // MongoDB Connection
 const connectDB = async () => {
   try {
