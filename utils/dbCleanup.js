@@ -3,10 +3,18 @@ const Course = require('../models/Course');
 const mongoose = require('mongoose');
 
 async function cleanupInvalidEnrollments() {
+  // Add connection check at the start
+  if (mongoose.connection.readyState !== 1) {
+    throw new Error('Database not connected. Current state: ' + mongoose.connection.readyState);
+  }
+
   try {
     console.log('Starting enrollment cleanup...');
+    
+    // Add timeout to ensure query doesn't hang
     const users = await User.find({ 'enrolledCourses.0': { $exists: true } })
-      .populate('enrolledCourses.course');
+      .populate('enrolledCourses.course')
+      .maxTimeMS(30000); // 30 second timeout
     
     let totalCleaned = 0;
 
@@ -64,4 +72,17 @@ async function cleanupInvalidEnrollments() {
   }
 }
 
-module.exports = { cleanupInvalidEnrollments };
+// Add verification method
+async function verifyConnection() {
+  try {
+    await mongoose.connection.db.admin().ping();
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
+
+module.exports = { 
+  cleanupInvalidEnrollments,
+  verifyConnection 
+};
