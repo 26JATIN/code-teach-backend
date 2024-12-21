@@ -55,14 +55,29 @@ app.use(express.json());
 
 // Add a connection promise to track connection status
 let dbConnected = false;
+let connectionAttempts = 0;
+const MAX_RETRIES = 5;
+
+// Modify the connection promise
 const connectionPromise = new Promise((resolve, reject) => {
+  let timeoutId;
+
   mongoose.connection.once('connected', () => {
+    clearTimeout(timeoutId);
     dbConnected = true;
-    resolve();
+    connectionAttempts = 0;
+    resolve(mongoose.connection);
   });
+
   mongoose.connection.once('error', (err) => {
+    clearTimeout(timeoutId);
     reject(err);
   });
+
+  // Add timeout to prevent hanging
+  timeoutId = setTimeout(() => {
+    reject(new Error('Connection timeout'));
+  }, 30000);
 });
 
 // MongoDB Connection
@@ -78,6 +93,7 @@ const connectDB = async () => {
       await mongoose.connection.close();
     }
 
+    console.log('Connecting to MongoDB...');
     const conn = await mongoose.connect(process.env.MONGODB_URI, {
       useNewUrlParser: true,
       useUnifiedTopology: true,
@@ -89,30 +105,44 @@ const connectDB = async () => {
       family: 4
     });
 
-    // Wait for the connection to be fully established
+    // Wait for connection to be fully established
     await connectionPromise;
-    
+
+    // Verify connection before proceeding
+    if (mongoose.connection.readyState !== 1) {
+      throw new Error('Connection not established properly');
+    }
+
     console.log(`MongoDB Connected: ${conn.connection.host}`);
     console.log('Database:', conn.connection.name);
-    
-    // Only run cleanup after connection is fully established
+
+    // Run cleanup after connection is verified
     if (dbConnected) {
-      console.log('Running enrollment cleanup...');
       try {
         const { cleanupInvalidEnrollments } = require('./utils/dbCleanup');
+        // Add small delay to ensure connection is stable
+        await new Promise(resolve => setTimeout(resolve, 1000));
         await cleanupInvalidEnrollments();
       } catch (cleanupError) {
         console.error('Cleanup error:', cleanupError);
+        // Don't throw cleanup errors - log and continue
       }
     }
-    
+
     return conn;
   } catch (error) {
     console.error('MongoDB connection error:', error);
-    if (error.name === 'MongoServerSelectionError') {
-      console.error('Could not connect to MongoDB servers');
+    connectionAttempts++;
+    
+    if (connectionAttempts >= MAX_RETRIES) {
+      console.error('Max connection retries reached');
+      throw error;
     }
-    throw error;
+    
+    const retryDelay = Math.min(1000 * Math.pow(2, connectionAttempts), 60000);
+    console.log(`Retrying connection in ${retryDelay/1000} seconds...`);
+    await new Promise(resolve => setTimeout(resolve, retryDelay));
+    return connectDB();
   }
 };
 
@@ -180,19 +210,32 @@ app.use((err, req, res, next) => {
 // Wait for database connection before starting server
 const startServer = async (port) => {
   try {
-    // Ensure database is connected before starting server
-    await connectDB();
-    await connectionPromise; // Wait for full connection
-
-    if (!dbConnected) {
+    // Wait for database connection
+    const conn = await connectDB();
+    
+    // Double check connection state
+    if (mongoose.connection.readyState !== 1) {
       throw new Error('Database connection not established');
     }
 
-    await app.listen(port);
+    // Start server only after successful connection
+    const server = await app.listen(port);
     console.log(`Server is running on port ${port}`);
+    
+    // Add server error handling
+    server.on('error', (err) => {
+      console.error('Server error:', err);
+      process.exit(1);
+    });
+
+    return server;
   } catch (err) {
     console.error('Failed to start server:', err);
-    process.exit(1);
+    if (err.code !== 'EADDRINUSE') {
+      process.exit(1);
+    }
+    // Try next port if current is in use
+    return startServer(port + 1);
   }
 };
 
