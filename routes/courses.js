@@ -202,4 +202,16 @@ router.put('/progress/:courseId', authenticateToken, async (req, res) => {
   }
 });
 
+// Add admin route to fix enrollments
+router.post('/fix-enrollments', authenticateToken, async (req, res) => {
+  try {
+    const { updateEnrollmentsAfterSeed } = require('../utils/enrollmentUpdater');
+    await updateEnrollmentsAfterSeed();
+    res.json({ message: 'Enrollments updated successfully' });
+  } catch (error) {
+    console.error('Error fixing enrollments:', error);
+    res.status(500).json({ error: 'Failed to fix enrollments' });
+  }
+});
+
 module.exports = router;

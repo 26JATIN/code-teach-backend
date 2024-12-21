@@ -40,7 +40,7 @@ const courses = [
   }
 ];
 
-async function seed() {
+async function seedCourses() {
   try {
     console.log('MongoDB URI:', process.env.MONGODB_URI); // Add this line for debugging
     
@@ -69,9 +69,14 @@ async function seed() {
       console.log(`Inserted course: ${course.title} with ID: ${course._id}`);
     });
 
+    // After successful seeding, update enrollments
+    const { updateEnrollmentsAfterSeed } = require('../utils/enrollmentUpdater');
+    await updateEnrollmentsAfterSeed();
+    
+    console.log('Course seeding and enrollment updates completed');
+
   } catch (error) {
-    console.error('Seeding error:', error);
-    throw error; // Propagate error to index.js
+    console.error('Error:', error);
   } finally {
     // Close the connection
     if (mongoose.connection.readyState === 1) {
@@ -82,11 +87,11 @@ async function seed() {
   }
 }
 
-module.exports = { seed };
+module.exports = { seedCourses };
 
 // Only run directly if this file is being run directly
 if (require.main === module) {
-  seed()
+  seedCourses()
     .then(() => {
       console.log('Seeding completed');
       process.exit(0);
