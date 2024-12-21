@@ -53,93 +53,97 @@ app.use(cors(corsOptions));
 
 app.use(express.json());
 
-// Add a connection promise to track connection status
+// Add connection state tracking with better timeout handling
+let connectionTimeout;
 let dbConnected = false;
 let connectionAttempts = 0;
-const MAX_RETRIES = 5;
+const MAX_RETRIES = 3;
+const INITIAL_TIMEOUT = 5000;
 
-// Modify the connection promise
-const connectionPromise = new Promise((resolve, reject) => {
-  let timeoutId;
+// Create a more robust connection promise
+const createConnectionPromise = () => {
+  return new Promise((resolve, reject) => {
+    // Clear any existing timeout
+    if (connectionTimeout) {
+      clearTimeout(connectionTimeout);
+    }
 
-  mongoose.connection.once('connected', () => {
-    clearTimeout(timeoutId);
-    dbConnected = true;
-    connectionAttempts = 0;
-    resolve(mongoose.connection);
+    // Set new timeout
+    connectionTimeout = setTimeout(() => {
+      mongoose.connection.close();
+      reject(new Error('Connection attempt timed out'));
+    }, INITIAL_TIMEOUT);
+
+    mongoose.connection.once('connected', () => {
+      clearTimeout(connectionTimeout);
+      dbConnected = true;
+      connectionAttempts = 0;
+      resolve(mongoose.connection);
+    });
+
+    mongoose.connection.once('error', (err) => {
+      clearTimeout(connectionTimeout);
+      reject(err);
+    });
   });
+};
 
-  mongoose.connection.once('error', (err) => {
-    clearTimeout(timeoutId);
-    reject(err);
-  });
-
-  // Add timeout to prevent hanging
-  timeoutId = setTimeout(() => {
-    reject(new Error('Connection timeout'));
-  }, 30000);
-});
-
-// MongoDB Connection
+// Update MongoDB Connection function
 const connectDB = async () => {
   try {
+    // Check existing connection
     if (mongoose.connection.readyState === 1) {
       console.log('MongoDB is already connected');
       return mongoose.connection;
     }
 
-    // Clear any existing connections
+    // Close any pending connections
     if (mongoose.connection.readyState !== 0) {
       await mongoose.connection.close();
     }
 
-    console.log('Connecting to MongoDB...');
-    const conn = await mongoose.connect(process.env.MONGODB_URI, {
+    console.log(`Connection attempt ${connectionAttempts + 1}/${MAX_RETRIES}`);
+
+    // Configure connection options
+    const connectOptions = {
       useNewUrlParser: true,
       useUnifiedTopology: true,
-      serverSelectionTimeoutMS: 30000,
+      serverSelectionTimeoutMS: INITIAL_TIMEOUT,
       heartbeatFrequencyMS: 2000,
       maxPoolSize: 10,
       minPoolSize: 5,
       socketTimeoutMS: 45000,
-      family: 4
-    });
+      family: 4,
+      // Add these for better connection handling
+      autoIndex: false, // Don't build indexes
+      maxConnecting: 1, // Maintain only one connection attempt at a time
+      connectTimeoutMS: INITIAL_TIMEOUT,
+    };
 
-    // Wait for connection to be fully established
-    await connectionPromise;
+    // Create connection promise before connecting
+    const connectionPromise = createConnectionPromise();
 
-    // Verify connection before proceeding
-    if (mongoose.connection.readyState !== 1) {
-      throw new Error('Connection not established properly');
-    }
+    // Connect to MongoDB
+    await mongoose.connect(process.env.MONGODB_URI, connectOptions);
+
+    // Wait for connection to be established
+    const conn = await connectionPromise;
 
     console.log(`MongoDB Connected: ${conn.connection.host}`);
     console.log('Database:', conn.connection.name);
-
-    // Run cleanup after connection is verified
-    if (dbConnected) {
-      try {
-        const { cleanupInvalidEnrollments } = require('./utils/dbCleanup');
-        // Add small delay to ensure connection is stable
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        await cleanupInvalidEnrollments();
-      } catch (cleanupError) {
-        console.error('Cleanup error:', cleanupError);
-        // Don't throw cleanup errors - log and continue
-      }
-    }
 
     return conn;
   } catch (error) {
     console.error('MongoDB connection error:', error);
     connectionAttempts++;
-    
+
     if (connectionAttempts >= MAX_RETRIES) {
       console.error('Max connection retries reached');
-      throw error;
+      throw new Error('Failed to connect to MongoDB after maximum retries');
     }
-    
-    const retryDelay = Math.min(1000 * Math.pow(2, connectionAttempts), 60000);
+
+    // Calculate exponential backoff
+    const retryDelay = Math.min(1000 * Math.pow(2, connectionAttempts), 10000);
     console.log(`Retrying connection in ${retryDelay/1000} seconds...`);
     await new Promise(resolve => setTimeout(resolve, retryDelay));
     return connectDB();
@@ -207,22 +211,26 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Wait for database connection before starting server
+// Update server startup
 const startServer = async (port) => {
+  let server;
   try {
-    // Wait for database connection
-    const conn = await connectDB();
-    
-    // Double check connection state
+    // Attempt connection with timeout
+    const connectPromise = connectDB();
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Initial connection timeout')), 30000);
+    });
+
+    await Promise.race([connectPromise, timeoutPromise]);
+
     if (mongoose.connection.readyState !== 1) {
-      throw new Error('Database connection not established');
+      throw new Error('Database connection failed');
     }
 
-    // Start server only after successful connection
-    const server = await app.listen(port);
+    server = await app.listen(port);
     console.log(`Server is running on port ${port}`);
-    
-    // Add server error handling
+
+    // Add error handler
     server.on('error', (err) => {
       console.error('Server error:', err);
       process.exit(1);
@@ -231,11 +239,8 @@ const startServer = async (port) => {
     return server;
   } catch (err) {
     console.error('Failed to start server:', err);
-    if (err.code !== 'EADDRINUSE') {
-      process.exit(1);
-    }
-    // Try next port if current is in use
-    return startServer(port + 1);
+    if (server) server.close();
+    process.exit(1);
   }
 };
 
