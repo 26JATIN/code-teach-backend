@@ -56,51 +56,90 @@ app.use(express.json());
 // MongoDB Connection
 const connectDB = async () => {
   try {
+    // Check if already connected
+    if (mongoose.connection.readyState === 1) {
+      console.log('MongoDB is already connected');
+      return;
+    }
+
+    // Clear any existing connections
+    if (mongoose.connection.readyState !== 0) {
+      await mongoose.connection.close();
+    }
+
     const conn = await mongoose.connect(process.env.MONGODB_URI, {
       useNewUrlParser: true,
       useUnifiedTopology: true,
-      // Additional options recommended for MongoDB Atlas
       retryWrites: true,
       w: 'majority',
-      serverSelectionTimeoutMS: 5000, // Timeout after 5s instead of 30s
-      socketTimeoutMS: 45000, // Close sockets after 45s of inactivity
-      // Add these options for better connection handling
-      autoReconnect: true,
-      reconnectTries: Number.MAX_VALUE,
-      reconnectInterval: 1000,
+      // Remove these as they're deprecated in newer versions
+      // autoReconnect: true,
+      // reconnectTries: Number.MAX_VALUE,
+      // reconnectInterval: 1000,
+      
+      // Add these instead
+      serverSelectionTimeoutMS: 30000, // Increase timeout to 30 seconds
+      heartbeatFrequencyMS: 2000,
+      maxPoolSize: 10,
+      minPoolSize: 5,
+      socketTimeoutMS: 45000,
+      family: 4 // Use IPv4, skip trying IPv6
     });
     
     console.log(`MongoDB Connected: ${conn.connection.host}`);
     console.log('Database:', conn.connection.name);
+    
+    return conn;
   } catch (error) {
     console.error('MongoDB connection error:', error);
-    // Retry connection after 5 seconds
-    console.log('Retrying connection in 5 seconds...');
-    setTimeout(connectDB, 5000);
+    // Add more detailed error logging
+    if (error.name === 'MongoServerSelectionError') {
+      console.error('Could not connect to any MongoDB servers');
+      console.error('Connection string:', process.env.MONGODB_URI.replace(/:([^:@]{8})[^:@]*@/, ':****@'));
+    }
+    
+    // Retry with increasing delay
+    const retryDelay = Math.min(1000 * Math.pow(2, mongoose.connection.retryCount || 0), 60000);
+    console.log(`Retrying connection in ${retryDelay/1000} seconds...`);
+    setTimeout(connectDB, retryDelay);
   }
 };
 
 // Initialize DB connection
 connectDB();
 
-// Enhanced connection event listeners
+// Enhanced connection event handlers
+mongoose.connection.on('connecting', () => {
+  console.log('Connecting to MongoDB...');
+});
+
 mongoose.connection.on('connected', () => {
-  console.log('Mongoose connected to MongoDB');
+  console.log('Successfully connected to MongoDB');
+  mongoose.connection.retryCount = 0; // Reset retry counter
 });
 
 mongoose.connection.on('error', (err) => {
   console.error('MongoDB connection error:', err);
-  mongoose.disconnect(); // This will trigger the 'disconnected' event
+  // Only disconnect if we're not already disconnected
+  if (mongoose.connection.readyState !== 0) {
+    mongoose.disconnect();
+  }
 });
 
 mongoose.connection.on('disconnected', () => {
-  console.log('MongoDB disconnected! Attempting to reconnect...');
-  setTimeout(connectDB, 5000);
+  console.log('MongoDB disconnected');
+  mongoose.connection.retryCount = (mongoose.connection.retryCount || 0) + 1;
+  // Only attempt reconnection if we're not already connecting
+  if (mongoose.connection.readyState !== 2) {
+    console.log('Attempting to reconnect...');
+    setTimeout(connectDB, 5000);
+  }
 });
 
-// Add this new event listener
-mongoose.connection.on('reconnected', () => {
-  console.log('MongoDB reconnected successfully!');
+// Add this new event listener for handling initial connection errors
+mongoose.connection.on('reconnectFailed', () => {
+  console.error('MongoDB reconnection failed after maximum retries');
+  process.exit(1); // Exit the process to allow container/process manager to restart
 });
 
 // Routes
@@ -123,16 +162,26 @@ app.use((err, req, res, next) => {
   });
 });
 
+// Wait for database connection before starting server
 const startServer = async (port) => {
   try {
-    await app.listen(port);
-    console.log(`Server is running on port ${port}`);
+    // Wait for database connection first
+    await connectDB();
+    
+    // Only start server if database is connected
+    if (mongoose.connection.readyState === 1) {
+      await app.listen(port);
+      console.log(`Server is running on port ${port}`);
+    } else {
+      throw new Error('Database connection not ready');
+    }
   } catch (err) {
     if (err.code === 'EADDRINUSE') {
       console.log(`Port ${port} is busy, trying ${port + 1}`);
       startServer(port + 1);
     } else {
       console.error('Error starting server:', err);
+      process.exit(1);
     }
   }
 };
@@ -140,3 +189,15 @@ const startServer = async (port) => {
 // Change default port to explicitly use 5000
 const PORT = process.env.PORT || 5000;
 startServer(PORT);
+
+// Graceful shutdown
+process.on('SIGINT', async () => {
+  try {
+    await mongoose.connection.close();
+    console.log('MongoDB connection closed through app termination');
+    process.exit(0);
+  } catch (err) {
+    console.error('Error during graceful shutdown:', err);
+    process.exit(1);
+  }
+});
