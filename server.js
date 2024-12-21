@@ -70,21 +70,32 @@ const createConnectionPromise = () => {
 
     // Set new timeout
     connectionTimeout = setTimeout(() => {
-      mongoose.connection.close();
-      reject(new Error('Connection attempt timed out'));
+      if (mongoose.connection.readyState !== 1) {
+        mongoose.connection.close();
+        reject(new Error('Connection attempt timed out'));
+      }
     }, INITIAL_TIMEOUT);
 
-    mongoose.connection.once('connected', () => {
+    const cleanup = () => {
       clearTimeout(connectionTimeout);
+      mongoose.connection.removeListener('connected', onConnect);
+      mongoose.connection.removeListener('error', onError);
+    };
+
+    const onConnect = () => {
+      cleanup();
       dbConnected = true;
       connectionAttempts = 0;
       resolve(mongoose.connection);
-    });
+    };
 
-    mongoose.connection.once('error', (err) => {
-      clearTimeout(connectionTimeout);
+    const onError = (err) => {
+      cleanup();
       reject(err);
-    });
+    };
+
+    mongoose.connection.once('connected', onConnect);
+    mongoose.connection.once('error', onError);
   });
 };
 
@@ -114,9 +125,8 @@ const connectDB = async () => {
       minPoolSize: 5,
       socketTimeoutMS: 45000,
       family: 4,
-      // Add these for better connection handling
-      autoIndex: false, // Don't build indexes
-      maxConnecting: 1, // Maintain only one connection attempt at a time
+      autoIndex: false,
+      maxConnecting: 1,
       connectTimeoutMS: INITIAL_TIMEOUT,
     };
 
@@ -124,25 +134,28 @@ const connectDB = async () => {
     const connectionPromise = createConnectionPromise();
 
     // Connect to MongoDB
-    await mongoose.connect(process.env.MONGODB_URI, connectOptions);
+    const mongooseConnection = await mongoose.connect(process.env.MONGODB_URI, connectOptions);
 
     // Wait for connection to be established
-    const conn = await connectionPromise;
+    await connectionPromise;
 
-    console.log(`MongoDB Connected: ${conn.connection.host}`);
-    console.log('Database:', conn.connection.name);
+    // Get connection info safely
+    const host = mongoose.connection.host || mongooseConnection.connection.host || 'unknown';
+    const dbName = mongoose.connection.name || mongooseConnection.connection.name || 'unknown';
 
-    return conn;
+    console.log(`MongoDB Connected: ${host}`);
+    console.log('Database:', dbName);
+
+    return mongoose.connection;
   } catch (error) {
     console.error('MongoDB connection error:', error);
-    connectionAttempts++;
-
-    if (connectionAttempts >= MAX_RETRIES) {
+    
+    if (connectionAttempts >= MAX_RETRIES - 1) {
       console.error('Max connection retries reached');
       throw new Error('Failed to connect to MongoDB after maximum retries');
     }
 
-    // Calculate exponential backoff
+    connectionAttempts++;
     const retryDelay = Math.min(1000 * Math.pow(2, connectionAttempts), 10000);
     console.log(`Retrying connection in ${retryDelay/1000} seconds...`);
     await new Promise(resolve => setTimeout(resolve, retryDelay));
@@ -216,25 +229,24 @@ const startServer = async (port) => {
   let server;
   try {
     // Attempt connection with timeout
+    const timeoutDuration = 30000;
     const connectPromise = connectDB();
     const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error('Initial connection timeout')), 30000);
+      setTimeout(() => reject(new Error('Initial connection timeout')), timeoutDuration);
     });
 
     await Promise.race([connectPromise, timeoutPromise]);
 
+    // Double check connection state
     if (mongoose.connection.readyState !== 1) {
-      throw new Error('Database connection failed');
+      throw new Error('Database connection not established');
     }
+
+    // Wait a bit to ensure connection is stable
+    await new Promise(resolve => setTimeout(resolve, 1000));
 
     server = await app.listen(port);
     console.log(`Server is running on port ${port}`);
-
-    // Add error handler
-    server.on('error', (err) => {
-      console.error('Server error:', err);
-      process.exit(1);
-    });
 
     return server;
   } catch (err) {
