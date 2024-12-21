@@ -5,7 +5,15 @@ const enrollmentSchema = new mongoose.Schema({
   course: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Course',
-    required: true
+    required: true,
+    validate: {
+      validator: async function(v) {
+        if (!v) return false;
+        const courseExists = await mongoose.model('Course').exists({ _id: v });
+        return courseExists;
+      },
+      message: 'Course does not exist'
+    }
   },
   enrolledAt: {
     type: Date,
@@ -20,6 +28,28 @@ const enrollmentSchema = new mongoose.Schema({
   lastAccessed: {
     type: Date,
     default: Date.now
+  }
+});
+
+// Add this pre-save middleware for enrollmentSchema
+enrollmentSchema.pre('save', async function(next) {
+  try {
+    if (!this.course) {
+      throw new Error('Course reference is required');
+    }
+    
+    if (!mongoose.Types.ObjectId.isValid(this.course)) {
+      throw new Error('Invalid course ID format');
+    }
+
+    const courseExists = await mongoose.model('Course').exists({ _id: this.course });
+    if (!courseExists) {
+      throw new Error('Referenced course does not exist');
+    }
+
+    next();
+  } catch (error) {
+    next(error);
   }
 });
 
@@ -136,24 +166,27 @@ userSchema.methods.getEnrolledCourses = function() {
 // Update the cleanupEnrollments method
 userSchema.methods.cleanupEnrollments = async function() {
   try {
-    const validEnrollments = [];
     const Course = mongoose.model('Course');
+    const validEnrollments = await Promise.all(
+      this.enrolledCourses.map(async (enrollment) => {
+        if (!enrollment.course) return null;
+        
+        const courseId = typeof enrollment.course === 'object' 
+          ? enrollment.course._id 
+          : enrollment.course;
+
+        if (!mongoose.Types.ObjectId.isValid(courseId)) return null;
+
+        const exists = await Course.exists({ _id: courseId });
+        return exists ? enrollment : null;
+      })
+    );
+
+    // Filter out null values and update enrollments
+    const filteredEnrollments = validEnrollments.filter(e => e !== null);
     
-    for (const enrollment of this.enrolledCourses) {
-      if (!enrollment.course || !mongoose.Types.ObjectId.isValid(enrollment.course)) {
-        continue;
-      }
-      
-      const courseExists = await Course.exists({ _id: enrollment.course });
-      if (courseExists) {
-        validEnrollments.push(enrollment);
-      }
-    }
-    
-    if (validEnrollments.length !== this.enrolledCourses.length) {
-      console.log(`Cleaning up enrollments for user ${this._id}`);
-      console.log(`Before: ${this.enrolledCourses.length}, After: ${validEnrollments.length}`);
-      this.enrolledCourses = validEnrollments;
+    if (filteredEnrollments.length !== this.enrolledCourses.length) {
+      this.enrolledCourses = filteredEnrollments;
       await this.save();
       return true;
     }

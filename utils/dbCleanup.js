@@ -4,46 +4,63 @@ const mongoose = require('mongoose');
 
 async function cleanupInvalidEnrollments() {
   try {
-    // Find all users with enrolled courses
-    const users = await User.find({ 'enrolledCourses.0': { $exists: true } });
+    console.log('Starting enrollment cleanup...');
+    const users = await User.find({ 'enrolledCourses.0': { $exists: true } })
+      .populate('enrolledCourses.course');
+    
     let totalCleaned = 0;
 
     for (const user of users) {
-      const validEnrollments = [];
-      
-      for (const enrollment of user.enrolledCourses) {
-        try {
-          // Make sure we have a valid course ID
-          if (!enrollment.course || !mongoose.Types.ObjectId.isValid(enrollment.course)) {
-            console.log(`Invalid course ID format for enrollment:`, enrollment);
-            continue;
-          }
+      console.log(`Checking enrollments for user ${user._id}`);
+      console.log('Current enrollments:', JSON.stringify(user.enrolledCourses, null, 2));
 
-          // Check if course exists
-          const course = await Course.findById(enrollment.course);
-          if (course) {
-            validEnrollments.push(enrollment);
+      // Filter valid enrollments with more detailed logging
+      const validEnrollments = [];
+      for (const enrollment of user.enrolledCourses) {
+        // Skip if course is null or undefined
+        if (!enrollment.course) {
+          console.log(`Found null course reference in enrollment: ${enrollment._id}`);
+          continue;
+        }
+
+        // Verify course still exists in database
+        try {
+          const courseExists = await Course.findById(
+            typeof enrollment.course === 'object' ? enrollment.course._id : enrollment.course
+          );
+          
+          if (courseExists) {
+            validEnrollments.push({
+              ...enrollment.toObject(),
+              course: courseExists._id // Ensure we store just the ID
+            });
           } else {
-            console.log(`Course not found for ID: ${enrollment.course}`);
+            console.log(`Course not found in database: ${enrollment.course}`);
           }
         } catch (err) {
-          console.error(`Error checking course ${enrollment.course}:`, err);
+          console.error(`Error verifying course: ${err.message}`);
         }
       }
-      
-      // Update user if enrollments changed
+
+      // Only update if there are changes
       if (validEnrollments.length !== user.enrolledCourses.length) {
-        console.log(`Before cleanup - User ${user._id} had ${user.enrolledCourses.length} enrollments`);
+        console.log(`User ${user._id}:`);
+        console.log(`- Before cleanup: ${user.enrolledCourses.length} enrollments`);
+        console.log(`- After cleanup: ${validEnrollments.length} enrollments`);
+        
+        // Update with valid enrollments
         user.enrolledCourses = validEnrollments;
         await user.save();
-        console.log(`After cleanup - User ${user._id} now has ${validEnrollments.length} enrollments`);
+        
         totalCleaned += (user.enrolledCourses.length - validEnrollments.length);
       }
     }
-    
-    console.log(`Cleanup completed. Removed ${totalCleaned} invalid enrollments`);
+
+    console.log(`Cleanup completed: Removed ${totalCleaned} invalid enrollments`);
+    return totalCleaned;
   } catch (error) {
-    console.error('Error in cleanupInvalidEnrollments:', error);
+    console.error('Error during cleanup:', error);
+    throw error;
   }
 }
 
