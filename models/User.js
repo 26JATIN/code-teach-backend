@@ -88,15 +88,37 @@ userSchema.methods.comparePassword = async function(candidatePassword) {
   }
 };
 
-// Add method to enroll in course
+// Update the enrollInCourse method
 userSchema.methods.enrollInCourse = async function(courseId) {
-  if (this.enrolledCourses.some(e => e.course.toString() === courseId.toString())) {
-    throw new Error('Already enrolled in this course');
+  try {
+    // Validate courseId
+    if (!mongoose.Types.ObjectId.isValid(courseId)) {
+      throw new Error('Invalid course ID format');
+    }
+
+    // Check if course exists
+    const course = await mongoose.model('Course').findById(courseId);
+    if (!course) {
+      throw new Error('Course not found');
+    }
+
+    // Check if already enrolled
+    if (this.enrolledCourses.some(e => e.course?.toString() === courseId.toString())) {
+      throw new Error('Already enrolled in this course');
+    }
+    
+    this.enrolledCourses.push({ 
+      course: courseId,
+      enrolledAt: new Date(),
+      progress: 0
+    });
+    
+    await this.save();
+    return this.enrolledCourses;
+  } catch (error) {
+    console.error('Error in enrollInCourse:', error);
+    throw error;
   }
-  
-  this.enrolledCourses.push({ course: courseId });
-  await this.save();
-  return this.enrolledCourses;
 };
 
 // Add method to get enrolled courses
@@ -111,23 +133,35 @@ userSchema.methods.getEnrolledCourses = function() {
     }));
 };
 
-// Add this method to the schema
+// Update the cleanupEnrollments method
 userSchema.methods.cleanupEnrollments = async function() {
-  const validEnrollments = [];
-  
-  for (const enrollment of this.enrolledCourses) {
-    const courseExists = await mongoose.model('Course').exists({ _id: enrollment.course });
-    if (courseExists) {
-      validEnrollments.push(enrollment);
+  try {
+    const validEnrollments = [];
+    const Course = mongoose.model('Course');
+    
+    for (const enrollment of this.enrolledCourses) {
+      if (!enrollment.course || !mongoose.Types.ObjectId.isValid(enrollment.course)) {
+        continue;
+      }
+      
+      const courseExists = await Course.exists({ _id: enrollment.course });
+      if (courseExists) {
+        validEnrollments.push(enrollment);
+      }
     }
+    
+    if (validEnrollments.length !== this.enrolledCourses.length) {
+      console.log(`Cleaning up enrollments for user ${this._id}`);
+      console.log(`Before: ${this.enrolledCourses.length}, After: ${validEnrollments.length}`);
+      this.enrolledCourses = validEnrollments;
+      await this.save();
+      return true;
+    }
+    return false;
+  } catch (error) {
+    console.error('Error in cleanupEnrollments:', error);
+    throw error;
   }
-  
-  if (validEnrollments.length !== this.enrolledCourses.length) {
-    this.enrolledCourses = validEnrollments;
-    await this.save();
-    return true;
-  }
-  return false;
 };
 
 // Add a pre-find middleware to ensure populated courses exist

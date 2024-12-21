@@ -127,27 +127,30 @@ router.get('/enrolled', authenticateToken, async (req, res) => {
     const user = await User.findById(req.user.userId)
       .populate({
         path: 'enrolledCourses.course',
-        model: 'Course'
+        model: 'Course',
+        match: { _id: { $exists: true } }
       });
     
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    // Clean up invalid enrollments before sending response
-    const validEnrollments = user.enrolledCourses.filter(enrollment => enrollment.course);
-    
-    // If we found invalid enrollments, clean them up
-    if (validEnrollments.length !== user.enrolledCourses.length) {
-      user.enrolledCourses = validEnrollments;
-      await user.save();
-      console.log(`Cleaned up invalid enrollments for user ${user._id}`);
-    }
+    console.log('Raw enrolled courses:', JSON.stringify(user.enrolledCourses, null, 2));
+
+    // Enhanced validation for enrolled courses
+    const validEnrollments = user.enrolledCourses.filter(enrollment => {
+      if (!enrollment.course) {
+        console.log('Invalid enrollment found:', JSON.stringify(enrollment, null, 2));
+        return false;
+      }
+      return true;
+    });
 
     const enrolledCourses = validEnrollments.map(enrollment => {
       const course = enrollment.course;
       return {
         _id: course._id,
+        courseId: course._id,
         title: course.title,
         description: course.description,
         difficulty: course.difficulty,
