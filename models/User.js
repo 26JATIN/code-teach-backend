@@ -111,4 +111,31 @@ userSchema.methods.getEnrolledCourses = function() {
     }));
 };
 
+// Add this method to the schema
+userSchema.methods.cleanupEnrollments = async function() {
+  const validEnrollments = [];
+  
+  for (const enrollment of this.enrolledCourses) {
+    const courseExists = await mongoose.model('Course').exists({ _id: enrollment.course });
+    if (courseExists) {
+      validEnrollments.push(enrollment);
+    }
+  }
+  
+  if (validEnrollments.length !== this.enrolledCourses.length) {
+    this.enrolledCourses = validEnrollments;
+    await this.save();
+    return true;
+  }
+  return false;
+};
+
+// Add a pre-find middleware to ensure populated courses exist
+userSchema.pre('find', function() {
+  this.populate({
+    path: 'enrolledCourses.course',
+    match: { _id: { $exists: true } }
+  });
+});
+
 module.exports = mongoose.model('User', userSchema);

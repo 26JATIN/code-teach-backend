@@ -113,9 +113,15 @@ mongoose.connection.on('connecting', () => {
   console.log('Connecting to MongoDB...');
 });
 
-mongoose.connection.on('connected', () => {
+const { cleanupInvalidEnrollments } = require('./utils/dbCleanup');
+
+mongoose.connection.on('connected', async () => {
   console.log('Successfully connected to MongoDB');
-  mongoose.connection.retryCount = 0; // Reset retry counter
+  mongoose.connection.retryCount = 0;
+  
+  // Run cleanup on connection
+  console.log('Running enrollment cleanup...');
+  await cleanupInvalidEnrollments();
 });
 
 mongoose.connection.on('error', (err) => {
