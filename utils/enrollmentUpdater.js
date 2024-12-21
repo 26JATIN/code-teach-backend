@@ -6,11 +6,16 @@ async function updateEnrollmentsAfterSeed() {
   try {
     console.log('Updating enrollment references...');
     
-    // Get all courses with their titles
-    const courses = await Course.find({}, { title: 1 });
-    const coursesMap = new Map(courses.map(c => [c.title, c._id]));
+    // Get all courses
+    const courses = await Course.find({});
+    // Create lookup maps for each course
+    const coursesByIndex = new Map();
     
-    // Get all users with enrollments
+    // Assuming courses are seeded in the same order, map by index
+    courses.forEach((course, index) => {
+      coursesByIndex.set(index, course._id);
+    });
+    
     const users = await User.find({ 'enrolledCourses.0': { $exists: true } });
     
     for (const user of users) {
@@ -18,26 +23,19 @@ async function updateEnrollmentsAfterSeed() {
       const validEnrollments = [];
       
       for (const enrollment of user.enrolledCourses) {
-        // Try to find corresponding course by title if course ref is null
-        if (!enrollment.course) {
-          // Get the old enrollment data for logging
-          console.log('Processing enrollment:', JSON.stringify(enrollment, null, 2));
-          
-          // Find matching course by title from previous enrollment
-          const matchedCourse = await Course.findOne({ title: "Java Programming" });
-          
-          if (matchedCourse) {
-            console.log(`Found matching course: ${matchedCourse.title}`);
-            validEnrollments.push({
-              ...enrollment.toObject(),
-              course: matchedCourse._id
-            });
-            updated = true;
-          } else {
-            console.log('No matching course found for enrollment');
-          }
+        // Get enrollment index based on order
+        const enrollmentIndex = user.enrolledCourses.indexOf(enrollment);
+        const courseId = coursesByIndex.get(enrollmentIndex);
+        
+        if (courseId) {
+          console.log(`Mapping enrollment at index ${enrollmentIndex} to course ID: ${courseId}`);
+          validEnrollments.push({
+            ...enrollment.toObject(),
+            course: courseId
+          });
+          updated = true;
         } else {
-          validEnrollments.push(enrollment);
+          console.log(`No matching course found for enrollment at index ${enrollmentIndex}`);
         }
       }
       
