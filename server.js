@@ -64,6 +64,10 @@ const connectDB = async () => {
       w: 'majority',
       serverSelectionTimeoutMS: 5000, // Timeout after 5s instead of 30s
       socketTimeoutMS: 45000, // Close sockets after 45s of inactivity
+      // Add these options for better connection handling
+      autoReconnect: true,
+      reconnectTries: Number.MAX_VALUE,
+      reconnectInterval: 1000,
     });
     
     console.log(`MongoDB Connected: ${conn.connection.host}`);
@@ -79,17 +83,24 @@ const connectDB = async () => {
 // Initialize DB connection
 connectDB();
 
-// Add connection event listeners
+// Enhanced connection event listeners
 mongoose.connection.on('connected', () => {
   console.log('Mongoose connected to MongoDB');
 });
 
 mongoose.connection.on('error', (err) => {
   console.error('MongoDB connection error:', err);
+  mongoose.disconnect(); // This will trigger the 'disconnected' event
 });
 
 mongoose.connection.on('disconnected', () => {
-  console.log('Mongoose disconnected from MongoDB');
+  console.log('MongoDB disconnected! Attempting to reconnect...');
+  setTimeout(connectDB, 5000);
+});
+
+// Add this new event listener
+mongoose.connection.on('reconnected', () => {
+  console.log('MongoDB reconnected successfully!');
 });
 
 // Routes

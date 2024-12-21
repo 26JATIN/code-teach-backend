@@ -3,6 +3,7 @@ const router = express.Router();
 const Course = require('../models/Course');
 const User = require('../models/User');
 const jwt = require('jsonwebtoken');
+const mongoose = require('mongoose');
 
 // Middleware to verify JWT token
 const authenticateToken = async (req, res, next) => {
@@ -119,20 +120,41 @@ router.delete('/enroll/:courseId', authenticateToken, async (req, res) => {
 // Get enrolled courses for user
 router.get('/enrolled', authenticateToken, async (req, res) => {
   try {
+    // Check database connection first
+    if (mongoose.connection.readyState !== 1) {
+      console.log('Database connection not ready. Current state:', mongoose.connection.readyState);
+      throw new Error('Database connection not ready');
+    }
+
     const user = await User.findById(req.user.userId)
-      .populate('enrolledCourses.course');
+      .populate({
+        path: 'enrolledCourses.course',
+        // Add error handling for null/missing courses
+        match: { _id: { $exists: true } }
+      });
     
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
 
+    // Add additional logging for debugging
+    console.log('User found:', user._id);
+    console.log('Raw enrolled courses:', user.enrolledCourses);
+
+    // Enhanced error handling and data verification
     const enrolledCourses = user.enrolledCourses
-      .filter(enrollment => enrollment.course) // Filter out any null references
+      .filter(enrollment => {
+        if (!enrollment.course) {
+          console.log('Found invalid enrollment:', enrollment);
+          return false;
+        }
+        return true;
+      })
       .map(enrollment => {
         const course = enrollment.course;
         return {
           _id: course._id,
-          courseId: course._id, // Add for backwards compatibility
+          courseId: course._id,
           title: course.title,
           description: course.description,
           difficulty: course.difficulty,
@@ -144,11 +166,27 @@ router.get('/enrolled', authenticateToken, async (req, res) => {
         };
       });
 
-    console.log('Sending enrolled courses:', JSON.stringify(enrolledCourses, null, 2));
-    res.json(enrolledCourses);
+    // Log the final response
+    console.log('Sending enrolled courses count:', enrolledCourses.length);
+    
+    // Send response with additional metadata
+    res.json({
+      courses: enrolledCourses,
+      count: enrolledCourses.length,
+      timestamp: new Date(),
+      connectionState: mongoose.connection.readyState
+    });
+
   } catch (error) {
-    console.error('Error fetching enrolled courses:', error);
-    res.status(500).json({ error: 'Error fetching enrolled courses' });
+    console.error('Error in /enrolled route:', error);
+    
+    // Enhanced error response
+    res.status(500).json({
+      error: 'Error fetching enrolled courses',
+      details: error.message,
+      connectionState: mongoose.connection.readyState,
+      timestamp: new Date()
+    });
   }
 });
 
