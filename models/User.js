@@ -1,6 +1,29 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 
+// Add progress tracking schema
+const moduleProgressSchema = new mongoose.Schema({
+  moduleId: {
+    type: String,
+    required: true
+  },
+  subModuleId: {
+    type: String,
+    required: true
+  },
+  completed: {
+    type: Boolean,
+    default: false
+  },
+  completedAt: {
+    type: Date
+  },
+  lastVisited: {
+    type: Date,
+    default: Date.now
+  }
+});
+
 const enrollmentSchema = new mongoose.Schema({
   course: {
     type: mongoose.Schema.Types.ObjectId,
@@ -25,9 +48,18 @@ const enrollmentSchema = new mongoose.Schema({
     min: 0,
     max: 100
   },
+  moduleProgress: [moduleProgressSchema],
   lastAccessed: {
     type: Date,
     default: Date.now
+  },
+  completedModules: {
+    type: Number,
+    default: 0
+  },
+  totalModules: {
+    type: Number,
+    default: 0
   }
 });
 
@@ -52,6 +84,53 @@ enrollmentSchema.pre('save', async function(next) {
     next(error);
   }
 });
+
+// Add method to update module progress
+enrollmentSchema.methods.updateModuleProgress = async function(moduleId, subModuleId) {
+  const moduleProgress = this.moduleProgress.find(
+    p => p.moduleId === moduleId && p.subModuleId === subModuleId
+  );
+
+  if (moduleProgress) {
+    moduleProgress.completed = true;
+    moduleProgress.completedAt = new Date();
+    moduleProgress.lastVisited = new Date();
+  } else {
+    this.moduleProgress.push({
+      moduleId,
+      subModuleId,
+      completed: true,
+      completedAt: new Date()
+    });
+  }
+
+  // Update completion stats
+  this.completedModules = this.moduleProgress.filter(p => p.completed).length;
+  this.progress = Math.round((this.completedModules / this.totalModules) * 100);
+  this.lastAccessed = new Date();
+};
+
+// Add method to initialize module tracking
+enrollmentSchema.methods.initializeModuleTracking = function(modules) {
+  this.totalModules = modules.reduce((sum, module) => 
+    sum + module.subModules.length, 0
+  );
+  
+  // Initialize progress tracking for each module
+  modules.forEach(module => {
+    module.subModules.forEach(subModule => {
+      if (!this.moduleProgress.find(p => 
+        p.moduleId === module.id && p.subModuleId === subModule.id
+      )) {
+        this.moduleProgress.push({
+          moduleId: module.id,
+          subModuleId: subModule.id,
+          completed: false
+        });
+      }
+    });
+  });
+};
 
 const userSchema = new mongoose.Schema({
   username: {

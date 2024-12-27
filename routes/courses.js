@@ -182,13 +182,9 @@ router.get('/enrolled', authenticateToken, async (req, res) => {
 // Update course progress
 router.put('/progress/:courseId', authenticateToken, async (req, res) => {
   try {
-    const { progress } = req.body;
+    const { moduleId, subModuleId, modules } = req.body;
     const courseId = req.params.courseId;
     const userId = req.user.userId;
-
-    if (typeof progress !== 'number' || progress < 0 || progress > 100) {
-      return res.status(400).json({ error: 'Invalid progress value' });
-    }
 
     const user = await User.findById(userId);
     if (!user) {
@@ -203,14 +199,24 @@ router.put('/progress/:courseId', authenticateToken, async (req, res) => {
       return res.status(404).json({ error: 'Course enrollment not found' });
     }
 
-    courseEnrollment.progress = progress;
-    courseEnrollment.lastAccessed = new Date();
+    // Initialize module tracking if not already done
+    if (!courseEnrollment.totalModules && modules) {
+      courseEnrollment.initializeModuleTracking(modules);
+    }
+
+    // Update progress for specific module
+    if (moduleId && subModuleId) {
+      await courseEnrollment.updateModuleProgress(moduleId, subModuleId);
+    }
+
     await user.save();
 
     res.json({ 
-      message: 'Progress updated successfully', 
-      progress,
-      lastAccessed: courseEnrollment.lastAccessed 
+      message: 'Progress updated successfully',
+      progress: courseEnrollment.progress,
+      completedModules: courseEnrollment.completedModules,
+      totalModules: courseEnrollment.totalModules,
+      lastAccessed: courseEnrollment.lastAccessed
     });
   } catch (error) {
     console.error('Progress update error:', error);
