@@ -179,24 +179,38 @@ router.get('/enrolled', authenticateToken, async (req, res) => {
   }
 });
 
-// Update course progress
+// Update course progress route with better error handling
 router.put('/progress/:courseId', authenticateToken, async (req, res) => {
   try {
     const { moduleId, subModuleId, modules } = req.body;
     const courseId = req.params.courseId;
     const userId = req.user.userId;
 
-    const user = await User.findById(userId);
+    console.log('Progress update request:', { userId, courseId, moduleId, subModuleId });
+
+    const user = await User.findById(userId)
+      .populate('enrolledCourses.course');
+    
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
 
     const courseEnrollment = user.enrolledCourses.find(
-      enrollment => enrollment.course.toString() === courseId
+      enrollment => enrollment.course?._id.toString() === courseId
     );
 
     if (!courseEnrollment) {
-      return res.status(404).json({ error: 'Course enrollment not found' });
+      console.log('Available enrollments:', user.enrolledCourses.map(e => ({
+        courseId: e.course?._id,
+        progress: e.progress
+      })));
+      return res.status(404).json({ 
+        error: 'Course enrollment not found',
+        debug: {
+          courseId,
+          availableEnrollments: user.enrolledCourses.length
+        }
+      });
     }
 
     // Initialize module tracking if not already done
@@ -220,7 +234,11 @@ router.put('/progress/:courseId', authenticateToken, async (req, res) => {
     });
   } catch (error) {
     console.error('Progress update error:', error);
-    res.status(500).json({ error: 'Error updating progress' });
+    res.status(500).json({ 
+      error: 'Error updating progress',
+      message: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 });
 
