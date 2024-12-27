@@ -243,6 +243,40 @@ router.put('/progress/:courseId', authenticateToken, async (req, res) => {
   }
 });
 
+// Add this new route to get course progress
+router.get('/progress/:courseId', authenticateToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const courseEnrollment = user.enrolledCourses.find(
+      enrollment => enrollment.course.toString() === req.params.courseId
+    );
+
+    if (!courseEnrollment) {
+      return res.status(404).json({ error: 'Course enrollment not found' });
+    }
+
+    const completedModules = courseEnrollment.moduleProgress
+      .filter(progress => progress.completed)
+      .map(progress => `${progress.moduleId}.${progress.subModuleId}`);
+
+    res.json({
+      completedModules,
+      progress: courseEnrollment.progress,
+      lastVisited: courseEnrollment.lastAccessed,
+      lastModuleId: courseEnrollment.lastModuleId,
+      lastSubModuleId: courseEnrollment.lastSubModuleId
+    });
+
+  } catch (error) {
+    console.error('Error fetching progress:', error);
+    res.status(500).json({ error: 'Error fetching course progress' });
+  }
+});
+
 // Add admin route to fix enrollments
 router.post('/fix-enrollments', authenticateToken, async (req, res) => {
   try {
