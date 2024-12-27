@@ -183,10 +183,20 @@ router.get('/enrolled', authenticateToken, async (req, res) => {
 router.put('/progress/:courseId', authenticateToken, async (req, res) => {
   try {
     const { progress } = req.body;
-    const user = await User.findById(req.user.userId);
-    
+    const courseId = req.params.courseId;
+    const userId = req.user.userId;
+
+    if (typeof progress !== 'number' || progress < 0 || progress > 100) {
+      return res.status(400).json({ error: 'Invalid progress value' });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
     const courseEnrollment = user.enrolledCourses.find(
-      enrollment => enrollment.course.toString() === req.params.courseId
+      enrollment => enrollment.course.toString() === courseId
     );
 
     if (!courseEnrollment) {
@@ -194,10 +204,16 @@ router.put('/progress/:courseId', authenticateToken, async (req, res) => {
     }
 
     courseEnrollment.progress = progress;
+    courseEnrollment.lastAccessed = new Date();
     await user.save();
 
-    res.json({ message: 'Progress updated successfully', progress });
+    res.json({ 
+      message: 'Progress updated successfully', 
+      progress,
+      lastAccessed: courseEnrollment.lastAccessed 
+    });
   } catch (error) {
+    console.error('Progress update error:', error);
     res.status(500).json({ error: 'Error updating progress' });
   }
 });
