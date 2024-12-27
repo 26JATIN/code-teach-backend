@@ -42,6 +42,10 @@ const enrollmentSchema = new mongoose.Schema({
     type: Date,
     default: Date.now
   },
+  lastAccessed: {
+    type: Date,
+    default: Date.now
+  },
   progress: {
     type: Number,
     default: 0,
@@ -130,6 +134,11 @@ enrollmentSchema.methods.initializeModuleTracking = function(modules) {
       }
     });
   });
+};
+
+// Add method to update last accessed time
+enrollmentSchema.methods.updateLastAccessed = function() {
+  this.lastAccessed = new Date();
 };
 
 const userSchema = new mongoose.Schema({

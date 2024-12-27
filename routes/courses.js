@@ -158,7 +158,8 @@ router.get('/enrolled', authenticateToken, async (req, res) => {
         category: course.category,
         path: course.path,
         progress: enrollment.progress,
-        enrolledAt: enrollment.enrolledAt
+        enrolledAt: enrollment.enrolledAt,
+        lastAccessed: enrollment.lastAccessed // Include last accessed time
       };
     });
 
@@ -296,6 +297,35 @@ router.post('/fix-enrollments', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('Error fixing enrollments:', error);
     res.status(500).json({ error: 'Failed to fix enrollments' });
+  }
+});
+
+// Add this new route to update last accessed time
+router.put('/lastAccessed/:courseId', authenticateToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const enrollment = user.enrolledCourses.find(
+      e => e.course.toString() === req.params.courseId
+    );
+
+    if (!enrollment) {
+      return res.status(404).json({ error: 'Course enrollment not found' });
+    }
+
+    enrollment.updateLastAccessed();
+    await user.save();
+
+    res.json({
+      message: 'Last accessed time updated',
+      lastAccessed: enrollment.lastAccessed
+    });
+  } catch (error) {
+    console.error('Error updating last accessed time:', error);
+    res.status(500).json({ error: 'Failed to update last accessed time' });
   }
 });
 
