@@ -87,6 +87,13 @@ router.post('/verify-email', async (req, res) => {
     delete req.app.locals.tempUserData;
     await EmailVerification.deleteOne({ _id: verification._id });
 
+    // After OTP verification, ensure password is properly hashed
+    if (!user.password.startsWith('$2')) {  // Check if password isn't already hashed
+      const salt = await bcrypt.genSalt(10);
+      user.password = await bcrypt.hash(user.password, salt);
+      await user.save();
+    }
+
     // Generate token
     const token = jwt.sign(
       { userId: user._id },
@@ -146,16 +153,26 @@ router.post('/resend-otp', async (req, res) => {
 router.post('/signin', async (req, res) => {
   try {
     const { email, password } = req.body;
-    console.log('Login attempt for:', email);
-
+    
+    // Find user and log debug info
     const user = await User.findOne({ email });
+    console.log('Login attempt for email:', email);
+    
     if (!user) {
-      return res.status(401).json({ error: 'Invalid credentials' });
+      return res.status(401).json({ error: 'Invalid email or password' });
+    }
+
+    // Check if password is hashed
+    if (!user.password.startsWith('$2')) {
+      console.error('Unhashed password detected');
+      return res.status(500).json({ error: 'Account setup incomplete' });
     }
 
     const isMatch = await user.comparePassword(password);
+    console.log('Password match result:', isMatch);
+
     if (!isMatch) {
-      return res.status(401).json({ error: 'Invalid credentials' });
+      return res.status(401).json({ error: 'Invalid email or password' });
     }
 
     const token = jwt.sign(
@@ -163,8 +180,6 @@ router.post('/signin', async (req, res) => {
       process.env.JWT_SECRET,
       { expiresIn: '24h' }
     );
-
-    console.log('Generated token for user:', user._id);
 
     res.json({
       token,
@@ -174,10 +189,9 @@ router.post('/signin', async (req, res) => {
         email: user.email
       }
     });
-
   } catch (error) {
     console.error('Signin error:', error);
-    res.status(500).json({ error: 'Error signing in' });
+    res.status(500).json({ error: error.message });
   }
 });
 

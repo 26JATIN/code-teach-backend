@@ -182,17 +182,26 @@ const userSchema = new mongoose.Schema({
 // Add better error handling to pre-save middleware
 userSchema.pre('save', async function(next) {
   try {
-    if (!this.isModified('password')) return next();
+    // Only hash the password if it's modified or new
+    if (!this.isModified('password')) {
+      return next();
+    }
     
     // Validate password strength
     if (this.password.length < 6) {
       throw new Error('Password must be at least 6 characters long');
     }
     
+    // Generate salt and hash
     const salt = await bcrypt.genSalt(10);
     this.password = await bcrypt.hash(this.password, salt);
+    
+    // Log for debugging (remove in production)
+    console.log('Password hashed successfully');
+    
     next();
   } catch (error) {
+    console.error('Error in password hashing:', error);
     next(error);
   }
 });
@@ -200,8 +209,15 @@ userSchema.pre('save', async function(next) {
 // Add error handling to methods
 userSchema.methods.comparePassword = async function(candidatePassword) {
   try {
-    return await bcrypt.compare(candidatePassword, this.password);
+    // Log for debugging (remove in production)
+    console.log('Comparing passwords...');
+    
+    const isMatch = await bcrypt.compare(candidatePassword, this.password);
+    console.log('Password match:', isMatch);
+    
+    return isMatch;
   } catch (error) {
+    console.error('Error comparing passwords:', error);
     throw new Error('Error comparing passwords');
   }
 };
