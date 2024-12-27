@@ -96,4 +96,3 @@ module.exports = function main (options, cb) {
     ready(err, app, server)
   })
 }
-
