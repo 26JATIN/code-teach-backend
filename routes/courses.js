@@ -188,38 +188,39 @@ router.put('/progress/:courseId', authenticateToken, async (req, res) => {
 
     console.log('Progress update request:', { userId, courseId, moduleId, subModuleId });
 
-    const user = await User.findById(userId)
-      .populate('enrolledCourses.course');
-    
+    const user = await User.findById(userId);
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
 
+    // Log all enrollments for debugging
+    console.log('All enrollments:', user.enrolledCourses.map(e => ({
+      courseId: e.course?.toString(),
+      progress: e.progress
+    })));
+
     const courseEnrollment = user.enrolledCourses.find(
-      enrollment => enrollment.course?._id.toString() === courseId
+      enrollment => enrollment.course?.toString() === courseId
     );
 
     if (!courseEnrollment) {
-      console.log('Available enrollments:', user.enrolledCourses.map(e => ({
-        courseId: e.course?._id,
-        progress: e.progress
-      })));
       return res.status(404).json({ 
         error: 'Course enrollment not found',
         debug: {
-          courseId,
-          availableEnrollments: user.enrolledCourses.length
+          requestedCourseId: courseId,
+          availableEnrollments: user.enrolledCourses.map(e => e.course?.toString())
         }
       });
     }
 
-    // Initialize module tracking if not already done
-    if (!courseEnrollment.totalModules && modules) {
-      courseEnrollment.initializeModuleTracking(modules);
-    }
-
-    // Update progress for specific module
+    // Initialize or update module progress
     if (moduleId && subModuleId) {
+      if (!courseEnrollment.moduleProgress) {
+        courseEnrollment.moduleProgress = [];
+      }
+      if (!courseEnrollment.totalModules && modules) {
+        courseEnrollment.initializeModuleTracking(modules);
+      }
       await courseEnrollment.updateModuleProgress(moduleId, subModuleId);
     }
 
@@ -237,7 +238,7 @@ router.put('/progress/:courseId', authenticateToken, async (req, res) => {
     res.status(500).json({ 
       error: 'Error updating progress',
       message: error.message,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      debug: error.stack
     });
   }
 });
