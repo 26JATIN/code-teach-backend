@@ -35,11 +35,10 @@ router.post('/signup', async (req, res) => {
     // Send verification email
     await sendVerificationEmail(email, otp);
 
-    // Store user data temporarily
-    const hashedPassword = await bcrypt.hash(password, 10);
+    // Store user data temporarily - store plain password
     req.app.locals.tempUserData = {
       email,
-      password: hashedPassword,
+      password, // Store plain password, will hash during user creation
       username
     };
 
@@ -75,10 +74,10 @@ router.post('/verify-email', async (req, res) => {
       return res.status(400).json({ message: 'Invalid verification attempt' });
     }
 
-    // Create verified user
+    // Create user - Password will be hashed by the pre-save middleware
     const user = await User.create({
       email: userData.email,
-      password: userData.password,
+      password: userData.password, // Plain password - will be hashed by pre-save middleware
       username: userData.username,
       isEmailVerified: true
     });
@@ -86,13 +85,6 @@ router.post('/verify-email', async (req, res) => {
     // Clean up
     delete req.app.locals.tempUserData;
     await EmailVerification.deleteOne({ _id: verification._id });
-
-    // After OTP verification, ensure password is properly hashed
-    if (!user.password.startsWith('$2')) {  // Check if password isn't already hashed
-      const salt = await bcrypt.genSalt(10);
-      user.password = await bcrypt.hash(user.password, salt);
-      await user.save();
-    }
 
     // Generate token
     const token = jwt.sign(
@@ -154,7 +146,6 @@ router.post('/signin', async (req, res) => {
   try {
     const { email, password } = req.body;
     
-    // Find user and log debug info
     const user = await User.findOne({ email });
     console.log('Login attempt for email:', email);
     
@@ -162,13 +153,11 @@ router.post('/signin', async (req, res) => {
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 
-    // Check if password is hashed
-    if (!user.password.startsWith('$2')) {
-      console.error('Unhashed password detected');
-      return res.status(500).json({ error: 'Account setup incomplete' });
-    }
+    // Add debug logging
+    console.log('Stored password hash:', user.password);
+    console.log('Attempting password comparison...');
 
-    const isMatch = await user.comparePassword(password);
+    const isMatch = await bcrypt.compare(password, user.password);
     console.log('Password match result:', isMatch);
 
     if (!isMatch) {
