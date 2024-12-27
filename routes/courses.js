@@ -243,7 +243,7 @@ router.put('/progress/:courseId', authenticateToken, async (req, res) => {
   }
 });
 
-// Add this new route to get course progress
+// Update this route to include more comprehensive progress data
 router.get('/progress/:courseId', authenticateToken, async (req, res) => {
   try {
     const user = await User.findById(req.user.userId);
@@ -259,16 +259,26 @@ router.get('/progress/:courseId', authenticateToken, async (req, res) => {
       return res.status(404).json({ error: 'Course enrollment not found' });
     }
 
+    // Get completed modules in order of completion
     const completedModules = courseEnrollment.moduleProgress
       .filter(progress => progress.completed)
+      .sort((a, b) => a.completedAt - b.completedAt)
       .map(progress => `${progress.moduleId}.${progress.subModuleId}`);
+
+    // Get last accessed module
+    const lastAccessed = courseEnrollment.moduleProgress
+      .sort((a, b) => b.lastVisited - a.lastVisited)[0];
 
     res.json({
       completedModules,
       progress: courseEnrollment.progress,
-      lastVisited: courseEnrollment.lastAccessed,
-      lastModuleId: courseEnrollment.lastModuleId,
-      lastSubModuleId: courseEnrollment.lastSubModuleId
+      lastVisited: lastAccessed ? {
+        moduleId: lastAccessed.moduleId,
+        subModuleId: lastAccessed.subModuleId,
+        timestamp: lastAccessed.lastVisited
+      } : null,
+      totalModules: courseEnrollment.totalModules,
+      currentProgress: courseEnrollment.progress
     });
 
   } catch (error) {
