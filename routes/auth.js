@@ -184,7 +184,7 @@ router.post('/signin', async (req, res) => {
   }
 });
 
-// Add forgot password route
+// Modify forgot password route to use OTP
 router.post('/forgot-password', async (req, res) => {
   try {
     const { email } = req.body;
@@ -194,49 +194,59 @@ router.post('/forgot-password', async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    // Generate reset token
-    const resetToken = jwt.sign(
-      { userId: user._id },
-      process.env.JWT_SECRET,
-      { expiresIn: '1h' }
-    );
+    // Generate OTP for password reset
+    const otp = generateOTP();
+    
+    // Save OTP and email to verification collection with password reset flag
+    await EmailVerification.create({
+      email,
+      otp,
+      isPasswordReset: true,
+      expiresAt: new Date(Date.now() + 10 * 60 * 1000) // 10 minutes expiry
+    });
 
-    // Save reset token to user
-    user.resetPasswordToken = resetToken;
-    user.resetPasswordExpires = Date.now() + 3600000; // 1 hour
-    await user.save();
+    // Send OTP email
+    await sendVerificationEmail(email, otp, 'reset_password');
 
-    // Send password reset email
-    await sendPasswordResetEmail(email, resetToken);
-
-    res.json({ message: 'Password reset email sent' });
+    res.json({ 
+      message: 'Password reset code sent to your email',
+      email 
+    });
   } catch (error) {
     console.error('Forgot password error:', error);
     res.status(500).json({ message: 'Error processing request' });
   }
 });
 
-// Add reset password route
+// Modify reset password route to use OTP verification
 router.post('/reset-password', async (req, res) => {
   try {
-    const { token, password } = req.body;
+    const { email, otp, newPassword } = req.body;
     
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await User.findOne({
-      _id: decoded.userId,
-      resetPasswordToken: token,
-      resetPasswordExpires: { $gt: Date.now() }
+    // Verify OTP
+    const verification = await EmailVerification.findOne({
+      email,
+      otp,
+      isPasswordReset: true,
+      expiresAt: { $gt: new Date() }
     });
 
-    if (!user) {
-      return res.status(400).json({ message: 'Invalid or expired reset token' });
+    if (!verification) {
+      return res.status(400).json({ message: 'Invalid or expired reset code' });
     }
 
-    // Update password
-    user.password = password;
-    user.resetPasswordToken = undefined;
-    user.resetPasswordExpires = undefined;
+    // Find and update user password
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Update password (will be hashed by pre-save middleware)
+    user.password = newPassword;
     await user.save();
+
+    // Clean up verification
+    await EmailVerification.deleteOne({ _id: verification._id });
 
     res.json({ message: 'Password reset successful' });
   } catch (error) {

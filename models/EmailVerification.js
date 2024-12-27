@@ -9,6 +9,10 @@ const emailVerificationSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
+  isPasswordReset: {
+    type: Boolean,
+    default: false,
+  },
   expiresAt: {
     type: Date,
     required: true,
