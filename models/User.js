@@ -162,7 +162,7 @@ const userSchema = new mongoose.Schema({
     lowercase: true,
     validate: {
       validator: function(v) {
-        return /^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/.test(v);
+        return /^\w+([\.-]?\w+)*@\w+)*(\.\w{2,3})+$/.test(v);
       },
       message: props => `${props.value} is not a valid email!`
     }
@@ -172,7 +172,9 @@ const userSchema = new mongoose.Schema({
     required: [true, 'Password is required'],
     minlength: [6, 'Password must be at least 6 characters long']
   },
-  enrolledCourses: [enrollmentSchema]
+  enrolledCourses: [enrollmentSchema],
+  resetPasswordToken: String,
+  resetPasswordExpires: Date
 }, {
   timestamps: true,
   toJSON: { virtuals: true },
