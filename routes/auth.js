@@ -255,4 +255,27 @@ router.post('/reset-password', async (req, res) => {
   }
 });
 
+// Add verify reset OTP route
+router.post('/verify-reset-otp', async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+    
+    const verification = await EmailVerification.findOne({
+      email,
+      otp,
+      isPasswordReset: true,
+      expiresAt: { $gt: new Date() }
+    });
+
+    if (!verification) {
+      return res.status(400).json({ message: 'Invalid or expired reset code' });
+    }
+
+    res.json({ message: 'Reset code verified' });
+  } catch (error) {
+    console.error('Verify reset OTP error:', error);
+    res.status(500).json({ message: 'Error verifying reset code' });
+  }
+});
+
 module.exports = router;
