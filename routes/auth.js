@@ -1,63 +1,144 @@
 const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
-const jwt = require('jsonwebtoken');
+const EmailVerification = require('../models/EmailVerification');
+const { sendVerificationEmail } = require('../utils/emailService');
 const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 
-// Add JWT config
-const JWT_SECRET = process.env.JWT_SECRET;
-const JWT_EXPIRES_IN = '24h';
+// Generate OTP
+const generateOTP = () => {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+};
 
 // Signup route
 router.post('/signup', async (req, res) => {
   try {
-    const { username, email, password } = req.body;
-    
-    // Log the request body for debugging
-    console.log('Signup request:', { username, email, password: '***' });
+    const { email, password, username } = req.body;
 
     // Check if user already exists
-    const existingUser = await User.findOne({ email });
-    if (existingUser) {
-      return res.status(400).json({ error: 'Email already registered' });
+    let user = await User.findOne({ email });
+    if (user) {
+      return res.status(400).json({ message: 'User already exists' });
     }
 
-    // Create new user
-    const user = new User({ username, email, password });
-    await user.save();
+    // Generate OTP
+    const otp = generateOTP();
+    
+    // Save OTP and email to verification collection
+    await EmailVerification.create({
+      email,
+      otp,
+      expiresAt: new Date(Date.now() + 10 * 60 * 1000) // 10 minutes expiry
+    });
 
-    // Generate JWT token
-    const token = jwt.sign(
-      { userId: user._id },
-      JWT_SECRET,
-      { expiresIn: JWT_EXPIRES_IN }
-    );
+    // Send verification email
+    await sendVerificationEmail(email, otp);
 
-    // Send response
-    res.status(201).json({
-      message: 'User created successfully',
-      token,
-      user: {
-        id: user._id,
-        username: user.username,
-        email: user.email
-      }
+    // Store user data temporarily
+    const hashedPassword = await bcrypt.hash(password, 10);
+    req.app.locals.tempUserData = {
+      email,
+      password: hashedPassword,
+      username
+    };
+
+    res.status(200).json({ 
+      message: 'Verification code sent to email',
+      email 
     });
 
   } catch (error) {
     console.error('Signup error:', error);
+    res.status(500).json({ message: 'Error in signup process' });
+  }
+});
+
+// Verify OTP route
+router.post('/verify-email', async (req, res) => {
+  try {
+    const { email, otp } = req.body;
     
-    // Send appropriate error message
-    if (error.name === 'ValidationError') {
-      return res.status(400).json({
-        error: Object.values(error.errors).map(err => err.message).join(', ')
-      });
-    }
-    
-    res.status(500).json({
-      error: 'Error creating user',
-      details: error.message
+    const verification = await EmailVerification.findOne({
+      email,
+      otp,
+      expiresAt: { $gt: new Date() }
     });
+
+    if (!verification) {
+      return res.status(400).json({ message: 'Invalid or expired OTP' });
+    }
+
+    // Get temporary user data
+    const userData = req.app.locals.tempUserData;
+    if (!userData || userData.email !== email) {
+      return res.status(400).json({ message: 'Invalid verification attempt' });
+    }
+
+    // Create verified user
+    const user = await User.create({
+      email: userData.email,
+      password: userData.password,
+      username: userData.username,
+      isEmailVerified: true
+    });
+
+    // Clean up
+    delete req.app.locals.tempUserData;
+    await EmailVerification.deleteOne({ _id: verification._id });
+
+    // Generate token
+    const token = jwt.sign(
+      { userId: user._id },
+      process.env.JWT_SECRET,
+      { expiresIn: '24h' }
+    );
+
+    res.status(200).json({
+      message: 'Email verified successfully',
+      token,
+      user: {
+        id: user._id,
+        email: user.email,
+        username: user.username
+      }
+    });
+
+  } catch (error) {
+    console.error('Verification error:', error);
+    res.status(500).json({ message: 'Error in verification process' });
+  }
+});
+
+// Resend OTP route
+router.post('/resend-otp', async (req, res) => {
+  try {
+    const { email } = req.body;
+    
+    // Generate new OTP
+    const otp = generateOTP();
+    
+    // Update or create new verification
+    await EmailVerification.findOneAndUpdate(
+      { email },
+      {
+        otp,
+        expiresAt: new Date(Date.now() + 10 * 60 * 1000)
+      },
+      { upsert: true }
+    );
+
+    // Send new verification email
+    await sendVerificationEmail(email, otp);
+
+    res.status(200).json({ 
+      message: 'New verification code sent',
+      email 
+    });
+
+  } catch (error) {
+    console.error('Resend OTP error:', error);
+    res.status(500).json({ message: 'Error resending verification code' });
   }
 });
 
@@ -79,8 +160,8 @@ router.post('/signin', async (req, res) => {
 
     const token = jwt.sign(
       { userId: user._id },
-      JWT_SECRET,
-      { expiresIn: JWT_EXPIRES_IN }
+      process.env.JWT_SECRET,
+      { expiresIn: '24h' }
     );
 
     console.log('Generated token for user:', user._id);
