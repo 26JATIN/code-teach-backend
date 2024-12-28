@@ -207,6 +207,7 @@ mongoose.connection.on('reconnectFailed', () => {
 // Routes
 app.use('/auth', require('./routes/auth'));
 app.use('/api/courses', require('./routes/courses'));
+app.use('/api/contact', require('./routes/contact'));
 
 // Error handling middleware
 app.use((err, req, res, next) => {
