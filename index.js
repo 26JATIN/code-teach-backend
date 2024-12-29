@@ -53,7 +53,6 @@ module.exports = function main (options, cb) {
   // Common middleware
   app.use(express.json());
   app.use(pinoHttp({ logger }));
-      
   // Register routes
   // @NOTE: require here because this ensures that even syntax errors
   // or other startup related errors are caught logged and debuggable.
