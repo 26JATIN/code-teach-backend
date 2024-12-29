@@ -11,6 +11,7 @@ const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost:5173',
   'https://code-teach-backend.onrender.com',
+  'https://code-teach-backend.vercel.app/'
 ];
 
 const corsOptions = {
