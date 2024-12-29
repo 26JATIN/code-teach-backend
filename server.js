@@ -8,9 +8,6 @@ const app = express();
 // CORS configuration
 const allowedOrigins = [
   'https://code-teach.vercel.app',
-  'http://localhost:3000',
-  'http://localhost:5173',
-  'https://code-teach-backend.onrender.com',
   'https://code-teach-backend.vercel.app/'
 ];
 
