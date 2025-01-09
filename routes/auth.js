@@ -6,6 +6,9 @@ const { sendVerificationEmail } = require('../utils/emailService');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
+// Extend OTP validity to 30 minutes
+const OTP_EXPIRY_TIME = 30 * 60 * 1000; // 30 minutes
+
 // Generate OTP
 const generateOTP = () => {
   return Math.floor(100000 + Math.random() * 900000).toString();
@@ -25,26 +28,31 @@ router.post('/signup', async (req, res) => {
     // Generate OTP
     const otp = generateOTP();
     
-    // Save OTP and email to verification collection
+    // Save OTP and email to verification collection with extended expiry
     await EmailVerification.create({
       email,
       otp,
-      expiresAt: new Date(Date.now() + 10 * 60 * 1000) // 10 minutes expiry
+      expiresAt: new Date(Date.now() + OTP_EXPIRY_TIME)
     });
+
+    // Store user data with session ID
+    const sessionId = Math.random().toString(36).substring(7);
+    req.app.locals.tempUserData = req.app.locals.tempUserData || {};
+    req.app.locals.tempUserData[email] = {
+      email,
+      password,
+      username,
+      sessionId,
+      timestamp: Date.now()
+    };
 
     // Send verification email
     await sendVerificationEmail(email, otp);
 
-    // Store user data temporarily - store plain password
-    req.app.locals.tempUserData = {
-      email,
-      password, // Store plain password, will hash during user creation
-      username
-    };
-
     res.status(200).json({ 
       message: 'Verification code sent to email',
-      email 
+      email,
+      sessionId // Send session ID to client
     });
 
   } catch (error) {
@@ -56,8 +64,9 @@ router.post('/signup', async (req, res) => {
 // Verify OTP route
 router.post('/verify-email', async (req, res) => {
   try {
-    const { email, otp } = req.body;
+    const { email, otp, sessionId } = req.body;
     
+    // Verify OTP
     const verification = await EmailVerification.findOne({
       email,
       otp,
@@ -69,21 +78,23 @@ router.post('/verify-email', async (req, res) => {
     }
 
     // Get temporary user data
-    const userData = req.app.locals.tempUserData;
-    if (!userData || userData.email !== email) {
-      return res.status(400).json({ message: 'Invalid verification attempt' });
+    const tempUserData = req.app.locals.tempUserData || {};
+    const userData = tempUserData[email];
+
+    if (!userData || userData.sessionId !== sessionId) {
+      return res.status(400).json({ message: 'Session expired, please sign up again' });
     }
 
-    // Create user - Password will be hashed by the pre-save middleware
+    // Create user
     const user = await User.create({
       email: userData.email,
-      password: userData.password, // Plain password - will be hashed by pre-save middleware
+      password: userData.password,
       username: userData.username,
       isEmailVerified: true
     });
 
     // Clean up
-    delete req.app.locals.tempUserData;
+    delete req.app.locals.tempUserData[email];
     await EmailVerification.deleteOne({ _id: verification._id });
 
     // Generate token
@@ -109,6 +120,18 @@ router.post('/verify-email', async (req, res) => {
   }
 });
 
+// Clean up expired sessions periodically
+setInterval(() => {
+  if (req.app.locals.tempUserData) {
+    const now = Date.now();
+    Object.keys(req.app.locals.tempUserData).forEach(email => {
+      if (now - req.app.locals.tempUserData[email].timestamp > OTP_EXPIRY_TIME) {
+        delete req.app.locals.tempUserData[email];
+      }
+    });
+  }
+}, 5 * 60 * 1000); // Clean up every 5 minutes
+
 // Resend OTP route
 router.post('/resend-otp', async (req, res) => {
   try {
@@ -122,7 +145,7 @@ router.post('/resend-otp', async (req, res) => {
       { email },
       {
         otp,
-        expiresAt: new Date(Date.now() + 10 * 60 * 1000)
+        expiresAt: new Date(Date.now() + OTP_EXPIRY_TIME)
       },
       { upsert: true }
     );
@@ -202,7 +225,7 @@ router.post('/forgot-password', async (req, res) => {
       email,
       otp,
       isPasswordReset: true,
-      expiresAt: new Date(Date.now() + 10 * 60 * 1000) // 10 minutes expiry
+      expiresAt: new Date(Date.now() + OTP_EXPIRY_TIME) // 30 minutes expiry
     });
 
     // Send OTP email
