@@ -11,6 +11,7 @@ const allowedOrigins = [
   'https://code-teach-backend.vercel.app/'
 ];
 
+
 const corsOptions = {
   origin: function (origin, callback) {
     // Allow requests with no origin (like mobile apps, curl, etc.)
