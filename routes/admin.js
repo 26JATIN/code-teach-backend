@@ -35,10 +35,54 @@ router.get('/users', adminAuth, async (req, res) => {
   }
 });
 
-// Get all courses
+// Get all courses with detailed info
 router.get('/courses', adminAuth, async (req, res) => {
   try {
-    const courses = await Course.find();
+    const courses = await Course.find().populate('enrolledUsers', 'username email');
+    res.json(courses);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Add new course
+router.post('/courses', adminAuth, async (req, res) => {
+  try {
+    const course = await Course.create(req.body);
+    res.status(201).json(course);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Update course
+router.put('/courses/:id', adminAuth, async (req, res) => {
+  try {
+    const course = await Course.findByIdAndUpdate(
+      req.params.id,
+      req.body,
+      { new: true }
+    );
+    res.json(course);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Delete course
+router.delete('/courses/:id', adminAuth, async (req, res) => {
+  try {
+    await Course.findByIdAndDelete(req.params.id);
+    res.json({ message: 'Course deleted successfully' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get user enrollments
+router.get('/enrollments', adminAuth, async (req, res) => {
+  try {
+    const courses = await Course.find().populate('enrolledUsers', 'username email');
     res.json(courses);
   } catch (error) {
     res.status(500).json({ error: error.message });
