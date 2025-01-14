@@ -28,7 +28,9 @@ router.get('/stats', adminAuth, async (req, res) => {
 // Get all users
 router.get('/users', adminAuth, async (req, res) => {
   try {
-    const users = await User.find().select('-password');
+    const users = await User.find()
+      .select('-password')
+      .sort({ createdAt: -1 }); // Sort by newest first
     res.json(users);
   } catch (error) {
     res.status(500).json({ error: error.message });
