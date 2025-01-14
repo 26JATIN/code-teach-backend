@@ -187,13 +187,16 @@ router.post('/signin', async (req, res) => {
       { expiresIn: '24h' }
     );
 
+    // Check if user is admin
+    const isAdmin = user.email === process.env.ADMIN_EMAIL;
+
     res.json({
       token,
       user: {
         id: user._id,
         username: user.username,
         email: user.email,
-        isAdmin: user.isAdmin
+        isAdmin: isAdmin
       }
     });
   } catch (error) {
