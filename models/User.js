@@ -174,7 +174,11 @@ const userSchema = new mongoose.Schema({
   },
   enrolledCourses: [enrollmentSchema],
   resetPasswordToken: String,
-  resetPasswordExpires: Date
+  resetPasswordExpires: Date,
+  isAdmin: {
+    type: Boolean,
+    default: false
+  }
 }, {
   timestamps: true,
   toJSON: { virtuals: true },

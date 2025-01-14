@@ -170,18 +170,12 @@ router.post('/signin', async (req, res) => {
     const { email, password } = req.body;
     
     const user = await User.findOne({ email });
-    console.log('Login attempt for email:', email);
     
     if (!user) {
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 
-    // Add debug logging
-    console.log('Stored password hash:', user.password);
-    console.log('Attempting password comparison...');
-
     const isMatch = await bcrypt.compare(password, user.password);
-    console.log('Password match result:', isMatch);
 
     if (!isMatch) {
       return res.status(401).json({ error: 'Invalid email or password' });
@@ -198,7 +192,8 @@ router.post('/signin', async (req, res) => {
       user: {
         id: user._id,
         username: user.username,
-        email: user.email
+        email: user.email,
+        isAdmin: user.isAdmin
       }
     });
   } catch (error) {

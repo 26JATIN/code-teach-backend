@@ -1,3 +1,4 @@
+
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -207,7 +208,6 @@ mongoose.connection.on('reconnectFailed', () => {
 app.use('/auth', require('./routes/auth'));
 app.use('/api/courses', require('./routes/courses'));
 app.use('/api/contact', require('./routes/contact'));
-app.use('/admin', require('./routes/admin')); // Add admin routes
 
 // Error handling middleware
 app.use((err, req, res, next) => {
@@ -224,31 +224,6 @@ app.use((err, req, res, next) => {
     error: process.env.NODE_ENV === 'development' ? err.message : undefined
   });
 });
-
-// Initialize admin user
-const initializeAdmin = async () => {
-  try {
-    const User = require('./models/User');
-    
-    // Check if admin exists
-    let admin = await User.findOne({ email: process.env.ADMIN_EMAIL });
-    
-    if (!admin) {
-      // Create admin user
-      admin = new User({
-        username: process.env.ADMIN_USERNAME,
-        email: process.env.ADMIN_EMAIL,
-        password: process.env.ADMIN_PASSWORD,
-        isAdmin: true
-      });
-      
-      await admin.save();
-      console.log('Admin user created successfully');
-    }
-  } catch (error) {
-    console.error('Error initializing admin:', error);
-  }
-};
 
 // Update server startup
 const startServer = async (port) => {
@@ -270,9 +245,6 @@ const startServer = async (port) => {
 
     // Wait a bit to ensure connection is stable
     await new Promise(resolve => setTimeout(resolve, 1000));
-
-    // Initialize admin user
-    await initializeAdmin();
 
     server = await app.listen(port);
     console.log(`Server is running on port ${port}`);
