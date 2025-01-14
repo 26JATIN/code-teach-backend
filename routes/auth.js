@@ -181,23 +181,30 @@ router.post('/signin', async (req, res) => {
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 
+    // Check if user is admin
+    const isAdmin = user.email === process.env.ADMIN_EMAIL;
+
     const token = jwt.sign(
-      { userId: user._id },
+      { 
+        userId: user._id,
+        isAdmin: isAdmin 
+      },
       process.env.JWT_SECRET,
       { expiresIn: '24h' }
     );
 
-    // Check if user is admin
-    const isAdmin = user.email === process.env.ADMIN_EMAIL;
+    // Set admin-specific response
+    const userData = {
+      id: user._id,
+      username: user.username,
+      email: user.email,
+      isAdmin: isAdmin
+    };
 
     res.json({
       token,
-      user: {
-        id: user._id,
-        username: user.username,
-        email: user.email,
-        isAdmin: isAdmin
-      }
+      user: userData,
+      redirectTo: isAdmin ? '/admin' : '/learning-dashboard'
     });
   } catch (error) {
     console.error('Signin error:', error);
