@@ -87,7 +87,11 @@ async function seedCourses() {
   }
 }
 
-module.exports = { seedCourses };
+// Modify the exports to include both the function and a seed alias for compatibility
+module.exports = { 
+  seedCourses,
+  seed: seedCourses  // Add this line to provide backward compatibility
+};
 
 // Only run directly if this file is being run directly
 if (require.main === module) {

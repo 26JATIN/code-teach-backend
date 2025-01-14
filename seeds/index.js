@@ -2,6 +2,7 @@ const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 const mongoose = require('mongoose');
 const Course = require('../models/Course');
+const { seedCourses } = require('./courseSeeder');  // Update import
 
 async function clearDatabase() {
   try {
@@ -30,8 +31,8 @@ async function seedDatabase() {
     // Clear existing data
     await clearDatabase();
     
-    // Import and run seeders
-    await require('./courseSeeder').seed();
+    // Call seedCourses directly instead of .seed()
+    await seedCourses();
     
     console.log('Seeding completed successfully');
     
