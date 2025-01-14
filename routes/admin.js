@@ -91,4 +91,26 @@ router.get('/enrollments', adminAuth, async (req, res) => {
   }
 });
 
+// Delete user
+router.delete('/users/:id', adminAuth, async (req, res) => {
+  try {
+    const userId = req.params.id;
+    
+    // Don't allow deleting admin users
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    if (user.email === process.env.ADMIN_EMAIL) {
+      return res.status(403).json({ error: 'Cannot delete admin user' });
+    }
+
+    await User.findByIdAndDelete(userId);
+    res.json({ message: 'User deleted successfully' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 module.exports = router;
