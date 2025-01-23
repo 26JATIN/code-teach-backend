@@ -1,16 +1,22 @@
 const express = require('express');
 const router = express.Router();
-const adminAuth = require('../middleware/adminAuth');
-const User = require('../models/User');
 const Course = require('../models/Course');
+const User = require('../models/User');
+const authenticateToken = require('../middleware/auth');
+const isAdmin = require('../middleware/isAdmin');
 
-// Get dashboard stats
-router.get('/stats', adminAuth, async (req, res) => {
+// Apply authentication and admin middleware to all routes
+router.use(authenticateToken, isAdmin);
+
+// Get admin stats
+router.get('/stats', async (req, res) => {
   try {
-    const totalUsers = await User.countDocuments();
-    const totalCourses = await Course.countDocuments();
-    const recentUsers = await User.find().sort({ createdAt: -1 }).limit(5);
-    const recentCourses = await Course.find().sort({ createdAt: -1 }).limit(5);
+    const [totalUsers, totalCourses, recentUsers, recentCourses] = await Promise.all([
+      User.countDocuments(),
+      Course.countDocuments(),
+      User.find().sort({ createdAt: -1 }).limit(5),
+      Course.find().sort({ createdAt: -1 }).limit(5)
+    ]);
 
     res.json({
       stats: {
@@ -21,12 +27,13 @@ router.get('/stats', adminAuth, async (req, res) => {
       recentCourses
     });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Stats error:', error);
+    res.status(500).json({ error: 'Error fetching admin stats' });
   }
 });
 
 // Get all users
-router.get('/users', adminAuth, async (req, res) => {
+router.get('/users', async (req, res) => {
   try {
     const users = await User.find()
       .select('-password')
@@ -38,7 +45,7 @@ router.get('/users', adminAuth, async (req, res) => {
 });
 
 // Get all courses with detailed info
-router.get('/courses', adminAuth, async (req, res) => {
+router.get('/courses', async (req, res) => {
   try {
     const courses = await Course.find().populate('enrolledUsers', 'username email');
     res.json(courses);
@@ -47,42 +54,126 @@ router.get('/courses', adminAuth, async (req, res) => {
   }
 });
 
-// Add new course
-router.post('/courses', adminAuth, async (req, res) => {
+// Create new course with validation
+router.post('/courses', async (req, res) => {
   try {
-    const course = await Course.create(req.body);
-    res.status(201).json(course);
+    const courseData = req.body;
+
+    // Create course instance for validation
+    const course = new Course(courseData);
+
+    // Run validation
+    const validationError = course.validateSync();
+    if (validationError) {
+      const errors = Object.values(validationError.errors).map(err => err.message);
+      return res.status(400).json({ error: 'Validation failed', errors });
+    }
+
+    // Save course
+    await course.save();
+
+    res.status(201).json({
+      message: 'Course created successfully',
+      course
+    });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Course creation error:', error);
+    if (error.code === 11000) {
+      const field = Object.keys(error.keyPattern)[0];
+      res.status(400).json({
+        error: `Duplicate ${field}. This ${field} is already in use.`
+      });
+    } else {
+      res.status(500).json({
+        error: 'Error creating course',
+        details: error.message
+      });
+    }
   }
 });
 
-// Update course
-router.put('/courses/:id', adminAuth, async (req, res) => {
+// Update course with validation
+router.put('/courses/:id', async (req, res) => {
   try {
-    const course = await Course.findByIdAndUpdate(
-      req.params.id,
-      req.body,
-      { new: true }
+    const courseData = req.body;
+    const courseId = req.params.id;
+
+    // Check if course exists
+    const existingCourse = await Course.findById(courseId);
+    if (!existingCourse) {
+      return res.status(404).json({ error: 'Course not found' });
+    }
+
+    // Validate update data
+    const tempCourse = new Course(courseData);
+    const validationError = tempCourse.validateSync();
+    if (validationError) {
+      const errors = Object.values(validationError.errors).map(err => err.message);
+      return res.status(400).json({ error: 'Validation failed', errors });
+    }
+
+    // Update course
+    const updatedCourse = await Course.findByIdAndUpdate(
+      courseId,
+      { $set: courseData },
+      { new: true, runValidators: true }
     );
-    res.json(course);
+
+    res.json({
+      message: 'Course updated successfully',
+      course: updatedCourse
+    });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Course update error:', error);
+    if (error.code === 11000) {
+      const field = Object.keys(error.keyPattern)[0];
+      res.status(400).json({
+        error: `Duplicate ${field}. This ${field} is already in use.`
+      });
+    } else {
+      res.status(500).json({
+        error: 'Error updating course',
+        details: error.message
+      });
+    }
   }
 });
 
-// Delete course
-router.delete('/courses/:id', adminAuth, async (req, res) => {
+// Delete course with cleanup
+router.delete('/courses/:id', async (req, res) => {
   try {
-    await Course.findByIdAndDelete(req.params.id);
-    res.json({ message: 'Course deleted successfully' });
+    const courseId = req.params.id;
+
+    // Check if course exists
+    const course = await Course.findById(courseId);
+    if (!course) {
+      return res.status(404).json({ error: 'Course not found' });
+    }
+
+    // Remove course from all user enrollments
+    await User.updateMany(
+      { 'enrolledCourses.course': courseId },
+      { $pull: { enrolledCourses: { course: courseId } } }
+    );
+
+    // Delete the course
+    await Course.findByIdAndDelete(courseId);
+
+    res.json({
+      message: 'Course deleted successfully',
+      courseId
+    });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Course deletion error:', error);
+    res.status(500).json({
+      error: 'Error deleting course',
+      details: error.message
+    });
   }
 });
 
 // Get user enrollments
-router.get('/enrollments', adminAuth, async (req, res) => {
+router.get('/enrollments', async (req, res) => {
   try {
     const courses = await Course.find().populate('enrolledUsers', 'username email');
     res.json(courses);
@@ -92,7 +183,7 @@ router.get('/enrollments', adminAuth, async (req, res) => {
 });
 
 // Delete user
-router.delete('/users/:id', adminAuth, async (req, res) => {
+router.delete('/users/:id', async (req, res) => {
   try {
     const userId = req.params.id;
     
