@@ -388,6 +388,11 @@ router.get('/:courseId/modules', async (req, res) => {
   try {
     const { courseId } = req.params;
 
+    // Add CORS headers explicitly for this route
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
     if (!mongoose.Types.ObjectId.isValid(courseId)) {
       return res.status(400).json({ error: 'Invalid course ID format' });
     }

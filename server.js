@@ -8,49 +8,48 @@ const app = express();
 // CORS configuration
 const allowedOrigins = [
   'https://code-teach.vercel.app',
-  'https://code-teach-backend.vercel.app/',
-  'http://localhost:5173',  // Add local development URL
-  'http://localhost:3000'   // Add alternative local development URL
+  'http://localhost:5173',
+  'http://localhost:3000'
 ];
-
 
 const corsOptions = {
   origin: function (origin, callback) {
     // Allow requests with no origin (like mobile apps, curl, etc.)
-    if (!origin) return callback(null, true);
-    
-    // Check if the origin is allowed
-    const isAllowed = allowedOrigins.some(allowedOrigin => {
-      if (allowedOrigin instanceof RegExp) {
-        return allowedOrigin.test(origin);
-      }
-      return allowedOrigin === origin;
-    });
-
-    if (isAllowed) {
+    if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
-      callback(new Error('CORS not allowed'));
+      console.log('Origin blocked:', origin); // For debugging
+      callback(new Error('Not allowed by CORS'));
     }
   },
-  credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: [
-    'Content-Type',
-    'Authorization',
-    'Origin',
-    'Accept',
-    'X-Requested-With',
-    'ngrok-skip-browser-warning'
-  ],
-  exposedHeaders: ['Content-Length', 'X-Request-Id'],
-  preflightContinue: false,
-  optionsSuccessStatus: 204,
-  maxAge: 86400 // 24 hours
+  allowedHeaders: ['Content-Type', 'Authorization', 'ngrok-skip-browser-warning'],
+  credentials: true,
+  maxAge: 86400, // 24 hours
+  optionsSuccessStatus: 200
 };
 
-// Apply CORS middleware
+// Apply CORS middleware before other middleware
 app.use(cors(corsOptions));
+
+// Add OPTIONS handling for preflight requests
+app.options('*', cors(corsOptions));
+
+// Error handling for CORS issues
+app.use((err, req, res, next) => {
+  if (err.message === 'Not allowed by CORS') {
+    console.error('CORS Error:', {
+      origin: req.headers.origin,
+      method: req.method,
+      path: req.path
+    });
+    return res.status(403).json({
+      error: 'CORS not allowed',
+      origin: req.headers.origin
+    });
+  }
+  next(err);
+});
 
 app.use(express.json());
 
