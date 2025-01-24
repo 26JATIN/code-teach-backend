@@ -400,43 +400,42 @@ router.put('/:courseId/modules', async (req, res) => {
   }
 });
 
-// Get all modules of a course
+// Get all modules of a course - moved before other routes
 router.get('/:courseId/modules', async (req, res) => {
   try {
     const { courseId } = req.params;
     console.log('Received request for modules:', {
       courseId,
       headers: req.headers,
+      path: req.path,
       method: req.method
     });
 
-    // Set proper headers
-    res.header('Content-Type', 'application/json');
-    res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept');
+    // Set response headers
+    res.set({
+      'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, Accept'
+    });
 
-    // Validate course ID format
+    // Handle preflight
+    if (req.method === 'OPTIONS') {
+      return res.status(200).end();
+    }
+
+    // Validate course ID
     if (!mongoose.Types.ObjectId.isValid(courseId)) {
-      console.log('Invalid course ID format:', courseId);
+      console.log('Invalid course ID:', courseId);
       return res.status(400).json({
-        error: 'Invalid course ID format',
+        error: 'Invalid course ID',
         details: 'The provided course ID is not valid',
         receivedId: courseId
       });
     }
 
-    // Check database connection
-    if (mongoose.connection.readyState !== 1) {
-      console.log('Database not connected. Current state:', mongoose.connection.readyState);
-      return res.status(503).json({
-        error: 'Database not connected',
-        details: 'The database connection is not ready'
-      });
-    }
-
-    // Find course
-    const course = await Course.findById(courseId).lean();
+    // Find course and ensure it exists
+    const course = await Course.findById(courseId);
     if (!course) {
       console.log('Course not found:', courseId);
       return res.status(404).json({
@@ -452,22 +451,20 @@ router.get('/:courseId/modules', async (req, res) => {
       moduleCount: course.modules?.length || 0
     });
 
-    const response = {
+    // Return modules
+    return res.status(200).json({
       modules: course.modules || [],
       count: course.modules?.length || 0,
       courseId: course._id,
       courseTitle: course.title,
       timestamp: new Date().toISOString()
-    };
-
-    return res.status(200).json(response);
+    });
 
   } catch (error) {
-    console.error('Error in GET /:courseId/modules:', error);
-    return res.status(500).json({ 
+    console.error('Error fetching modules:', error);
+    return res.status(500).json({
       error: 'Error fetching modules',
-      details: error.message,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      details: error.message
     });
   }
 });
@@ -499,6 +496,21 @@ router.delete('/:courseId/modules/:moduleIndex', authenticateToken, async (req, 
       error: 'Error deleting module',
       details: error.message 
     });
+  }
+});
+
+// Add a debug route to check course existence
+router.get('/:courseId/debug', async (req, res) => {
+  try {
+    const { courseId } = req.params;
+    const exists = await Course.exists({ _id: courseId });
+    res.json({
+      exists,
+      isValidId: mongoose.Types.ObjectId.isValid(courseId),
+      courseId
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });
 

@@ -25,23 +25,34 @@ app.use((req, res, next) => {
   next();
 });
 
+// Add explicit route logging
+app.use((req, res, next) => {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+  console.log('Headers:', req.headers);
+  next();
+});
+
 const corsOptions = {
   origin: function (origin, callback) {
-    console.log('Request origin:', origin);
     // Allow requests with no origin (like mobile apps, curl, etc.)
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
-      console.log('Origin blocked:', origin); // For debugging
-      callback(new Error('Not allowed by CORS'));
+      console.log('Origin blocked:', origin);
+      // Send more detailed error
+      callback(new Error(`CORS not allowed for origin: ${origin}`));
     }
   },
+  credentials: false, // Change to false since we're using token auth
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'ngrok-skip-browser-warning'],
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'Accept',
+    'ngrok-skip-browser-warning'
+  ],
   exposedHeaders: ['Content-Type'],
-  credentials: true,
-  maxAge: 86400, // 24 hours
-  optionsSuccessStatus: 200
+  maxAge: 86400
 };
 
 // Apply CORS middleware before other middleware
@@ -224,6 +235,16 @@ app.use('/auth', require('./routes/auth'));
 app.use('/api/courses', require('./routes/courses'));
 app.use('/api/contact', require('./routes/contact'));
 app.use('/admin', require('./routes/admin')); // Add admin routes
+
+// Add 404 handler
+app.use((req, res) => {
+  console.log('404 Not Found:', req.method, req.url);
+  res.status(404).json({
+    error: 'Not Found',
+    path: req.url,
+    method: req.method
+  });
+});
 
 // Error handling middleware - Update to handle module-specific errors
 app.use((err, req, res, next) => {
