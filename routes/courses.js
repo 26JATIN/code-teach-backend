@@ -388,14 +388,20 @@ router.get('/:courseId/modules', async (req, res) => {
   try {
     const { courseId } = req.params;
 
+    if (!mongoose.Types.ObjectId.isValid(courseId)) {
+      return res.status(400).json({ error: 'Invalid course ID format' });
+    }
+
     const course = await Course.findById(courseId);
     if (!course) {
       return res.status(404).json({ error: 'Course not found' });
     }
 
     res.json({
-      modules: course.modules,
-      count: course.modules.length
+      modules: course.modules || [],
+      count: course.modules?.length || 0,
+      courseId: course._id,
+      courseTitle: course.title
     });
   } catch (error) {
     console.error('Error fetching modules:', error);
