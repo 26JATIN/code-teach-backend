@@ -3,6 +3,7 @@ const User = require('../models/User');
 
 const adminAuth = async (req, res, next) => {
   try {
+    
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
 
