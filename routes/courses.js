@@ -357,19 +357,36 @@ router.post('/:courseId/modules', authenticateToken, async (req, res) => {
 });
 
 // Update modules of a course
-router.put('/:courseId/modules', authenticateToken, async (req, res) => {
+router.put('/:courseId/modules', async (req, res) => {
   try {
     const { courseId } = req.params;
     const { modules } = req.body;
+    console.log('Updating modules for course:', courseId);
+
+    // Add CORS headers
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'PUT, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+    if (!mongoose.Types.ObjectId.isValid(courseId)) {
+      console.log('Invalid course ID format:', courseId);
+      return res.status(400).json({ error: 'Invalid course ID format' });
+    }
 
     const course = await Course.findById(courseId);
     if (!course) {
+      console.log('Course not found:', courseId);
       return res.status(404).json({ error: 'Course not found' });
+    }
+
+    if (!Array.isArray(modules)) {
+      return res.status(400).json({ error: 'Modules must be an array' });
     }
 
     course.modules = modules;
     await course.save();
 
+    console.log('Modules updated successfully for course:', course.title);
     res.json({
       message: 'Modules updated successfully',
       modules: course.modules
@@ -387,21 +404,25 @@ router.put('/:courseId/modules', authenticateToken, async (req, res) => {
 router.get('/:courseId/modules', async (req, res) => {
   try {
     const { courseId } = req.params;
+    console.log('Fetching modules for course:', courseId);
 
-    // Add CORS headers explicitly for this route
+    // Add CORS headers
     res.header('Access-Control-Allow-Origin', '*');
     res.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
     res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
     if (!mongoose.Types.ObjectId.isValid(courseId)) {
+      console.log('Invalid course ID format:', courseId);
       return res.status(400).json({ error: 'Invalid course ID format' });
     }
 
-    const course = await Course.findById(courseId);
+    const course = await Course.findById(courseId).lean();
     if (!course) {
+      console.log('Course not found:', courseId);
       return res.status(404).json({ error: 'Course not found' });
     }
 
+    console.log('Found course:', course.title);
     res.json({
       modules: course.modules || [],
       count: course.modules?.length || 0,
