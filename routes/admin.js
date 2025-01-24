@@ -172,6 +172,95 @@ router.delete('/courses/:id', async (req, res) => {
   }
 });
 
+// Get course with modules
+router.get('/courses/:id/modules', async (req, res) => {
+  try {
+    const course = await Course.findById(req.params.id);
+    if (!course) {
+      return res.status(404).json({ error: 'Course not found' });
+    }
+
+    res.json({
+      courseId: course._id,
+      title: course.title,
+      modules: course.modules || []
+    });
+  } catch (error) {
+    console.error('Error fetching course modules:', error);
+    res.status(500).json({ error: 'Error fetching course modules' });
+  }
+});
+
+// Add or update modules for a course
+router.post('/courses/:id/modules', async (req, res) => {
+  try {
+    const course = await Course.findById(req.params.id);
+    if (!course) {
+      return res.status(404).json({ error: 'Course not found' });
+    }
+
+    const { modules } = req.body;
+    
+    // Validate modules structure
+    const tempCourse = new Course({
+      ...course.toObject(),
+      modules
+    });
+    
+    const validationError = tempCourse.validateSync();
+    if (validationError) {
+      const errors = Object.values(validationError.errors).map(err => err.message);
+      return res.status(400).json({ error: 'Module validation failed', errors });
+    }
+
+    course.modules = modules;
+    await course.save();
+
+    res.json({
+      message: 'Modules updated successfully',
+      courseId: course._id,
+      modules: course.modules
+    });
+  } catch (error) {
+    console.error('Error updating course modules:', error);
+    res.status(500).json({
+      error: 'Error updating course modules',
+      details: error.message
+    });
+  }
+});
+
+// Delete a specific module
+router.delete('/courses/:id/modules/:moduleIndex', async (req, res) => {
+  try {
+    const { id, moduleIndex } = req.params;
+    const course = await Course.findById(id);
+    
+    if (!course) {
+      return res.status(404).json({ error: 'Course not found' });
+    }
+
+    if (!course.modules || moduleIndex >= course.modules.length) {
+      return res.status(404).json({ error: 'Module not found' });
+    }
+
+    course.modules.splice(moduleIndex, 1);
+    await course.save();
+
+    res.json({
+      message: 'Module deleted successfully',
+      courseId: course._id,
+      remainingModules: course.modules
+    });
+  } catch (error) {
+    console.error('Error deleting module:', error);
+    res.status(500).json({
+      error: 'Error deleting module',
+      details: error.message
+    });
+  }
+});
+
 // Get user enrollments
 router.get('/enrollments', async (req, res) => {
   try {

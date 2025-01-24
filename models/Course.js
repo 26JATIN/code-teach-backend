@@ -49,7 +49,72 @@ const courseSchema = new mongoose.Schema({
       },
       message: props => `${props.value} is not a valid course path! Path should start with /courses/ and contain only lowercase letters, numbers, and hyphens`
     }
-  }
+  },
+  modules: [{
+    title: {
+      type: String,
+      required: [true, 'Module title is required'],
+      trim: true
+    },
+    description: {
+      type: String,
+      required: [true, 'Module description is required'],
+      trim: true
+    },
+    subModules: [{
+      title: {
+        type: String,
+        required: [true, 'Submodule title is required'],
+        trim: true
+      },
+      description: {
+        type: String,
+        required: [true, 'Submodule description is required'],
+        trim: true
+      },
+      summary: {
+        title: String,
+        description: String
+      },
+      keyFeatures: [{
+        icon: String,
+        text: String
+      }],
+      conceptSections: [{
+        icon: String,
+        title: String,
+        content: [String],
+        code: String
+      }],
+      codeExamples: [{
+        title: String,
+        code: String,
+        showLineNumbers: {
+          type: Boolean,
+          default: true
+        },
+        showCopyButton: {
+          type: Boolean,
+          default: true
+        }
+      }],
+      mistakesToAvoid: {
+        mistakes: [String],
+        alternatives: [String]
+      },
+      practiceExercises: [{
+        title: String,
+        description: String,
+        hint: String
+      }],
+      mcqQuestions: [{
+        question: String,
+        options: [String],
+        correctAnswer: Number,
+        explanation: String
+      }]
+    }]
+  }]
 }, { 
   timestamps: true,
   collection: 'courses'

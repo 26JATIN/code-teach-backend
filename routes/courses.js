@@ -329,4 +329,111 @@ router.put('/lastAccessed/:courseId', authenticateToken, async (req, res) => {
   }
 });
 
+// Add modules to a course
+router.post('/:courseId/modules', authenticateToken, async (req, res) => {
+  try {
+    const { courseId } = req.params;
+    const { modules } = req.body;
+
+    const course = await Course.findById(courseId);
+    if (!course) {
+      return res.status(404).json({ error: 'Course not found' });
+    }
+
+    course.modules = modules;
+    await course.save();
+
+    res.status(201).json({
+      message: 'Modules added successfully',
+      modules: course.modules
+    });
+  } catch (error) {
+    console.error('Error adding modules:', error);
+    res.status(500).json({ 
+      error: 'Error adding modules',
+      details: error.message 
+    });
+  }
+});
+
+// Update modules of a course
+router.put('/:courseId/modules', authenticateToken, async (req, res) => {
+  try {
+    const { courseId } = req.params;
+    const { modules } = req.body;
+
+    const course = await Course.findById(courseId);
+    if (!course) {
+      return res.status(404).json({ error: 'Course not found' });
+    }
+
+    course.modules = modules;
+    await course.save();
+
+    res.json({
+      message: 'Modules updated successfully',
+      modules: course.modules
+    });
+  } catch (error) {
+    console.error('Error updating modules:', error);
+    res.status(500).json({ 
+      error: 'Error updating modules',
+      details: error.message 
+    });
+  }
+});
+
+// Get all modules of a course
+router.get('/:courseId/modules', async (req, res) => {
+  try {
+    const { courseId } = req.params;
+
+    const course = await Course.findById(courseId);
+    if (!course) {
+      return res.status(404).json({ error: 'Course not found' });
+    }
+
+    res.json({
+      modules: course.modules,
+      count: course.modules.length
+    });
+  } catch (error) {
+    console.error('Error fetching modules:', error);
+    res.status(500).json({ 
+      error: 'Error fetching modules',
+      details: error.message 
+    });
+  }
+});
+
+// Delete a specific module
+router.delete('/:courseId/modules/:moduleIndex', authenticateToken, async (req, res) => {
+  try {
+    const { courseId, moduleIndex } = req.params;
+
+    const course = await Course.findById(courseId);
+    if (!course) {
+      return res.status(404).json({ error: 'Course not found' });
+    }
+
+    if (moduleIndex >= course.modules.length) {
+      return res.status(404).json({ error: 'Module not found' });
+    }
+
+    course.modules.splice(moduleIndex, 1);
+    await course.save();
+
+    res.json({
+      message: 'Module deleted successfully',
+      remainingModules: course.modules
+    });
+  } catch (error) {
+    console.error('Error deleting module:', error);
+    res.status(500).json({ 
+      error: 'Error deleting module',
+      details: error.message 
+    });
+  }
+});
+
 module.exports = router;

@@ -8,7 +8,9 @@ const app = express();
 // CORS configuration
 const allowedOrigins = [
   'https://code-teach.vercel.app',
-  'https://code-teach-backend.vercel.app/'
+  'https://code-teach-backend.vercel.app/',
+  'http://localhost:5173',  // Add local development URL
+  'http://localhost:3000'   // Add alternative local development URL
 ];
 
 
@@ -209,19 +211,32 @@ app.use('/api/courses', require('./routes/courses'));
 app.use('/api/contact', require('./routes/contact'));
 app.use('/admin', require('./routes/admin')); // Add admin routes
 
-// Error handling middleware
+// Error handling middleware - Update to handle module-specific errors
 app.use((err, req, res, next) => {
   console.error('Error details:', {
     message: err.message,
     stack: err.stack,
     path: req.path,
     method: req.method,
-    body: req.body
+    body: req.body,
+    module: err.module || 'unknown' // Add module tracking
   });
+  
+  // Handle module-specific validation errors
+  if (err.name === 'ValidationError' && err.errors) {
+    return res.status(400).json({
+      message: 'Validation Error',
+      errors: Object.values(err.errors).map(e => ({
+        field: e.path,
+        message: e.message
+      }))
+    });
+  }
   
   res.status(500).json({ 
     message: 'Something went wrong!',
-    error: process.env.NODE_ENV === 'development' ? err.message : undefined
+    error: process.env.NODE_ENV === 'development' ? err.message : undefined,
+    module: process.env.NODE_ENV === 'development' ? err.module : undefined
   });
 });
 
