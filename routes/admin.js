@@ -293,4 +293,71 @@ router.delete('/users/:id', async (req, res) => {
   }
 });
 
+// Get course modules - Add this route
+router.get('/courses/:courseId/modules', async (req, res) => {
+  try {
+    const { courseId } = req.params;
+    console.log('Fetching modules for course:', courseId);
+
+    if (!mongoose.Types.ObjectId.isValid(courseId)) {
+      return res.status(400).json({
+        error: 'Invalid course ID',
+        details: 'The provided course ID is not valid'
+      });
+    }
+
+    const course = await Course.findById(courseId);
+    if (!course) {
+      return res.status(404).json({
+        error: 'Course not found',
+        details: 'No course exists with the provided ID'
+      });
+    }
+
+    res.json({
+      modules: course.modules || [],
+      count: course.modules?.length || 0,
+      courseId: course._id,
+      courseTitle: course.title
+    });
+  } catch (error) {
+    console.error('Error fetching modules:', error);
+    res.status(500).json({
+      error: 'Error fetching modules',
+      details: error.message
+    });
+  }
+});
+
+// Update modules - Add this route
+router.put('/courses/:courseId/modules', async (req, res) => {
+  try {
+    const { courseId } = req.params;
+    const { modules } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(courseId)) {
+      return res.status(400).json({ error: 'Invalid course ID' });
+    }
+
+    const course = await Course.findById(courseId);
+    if (!course) {
+      return res.status(404).json({ error: 'Course not found' });
+    }
+
+    course.modules = modules;
+    await course.save();
+
+    res.json({
+      message: 'Modules updated successfully',
+      modules: course.modules
+    });
+  } catch (error) {
+    console.error('Error updating modules:', error);
+    res.status(500).json({
+      error: 'Error updating modules',
+      details: error.message
+    });
+  }
+});
+
 module.exports = router;
