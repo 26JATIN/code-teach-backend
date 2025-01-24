@@ -404,7 +404,11 @@ router.put('/:courseId/modules', async (req, res) => {
 router.get('/:courseId/modules', async (req, res) => {
   try {
     const { courseId } = req.params;
-    console.log('Fetching modules for course:', courseId);
+    console.log('Received request for modules:', {
+      courseId,
+      headers: req.headers,
+      method: req.method
+    });
 
     // Set proper headers
     res.header('Content-Type', 'application/json');
@@ -412,38 +416,58 @@ router.get('/:courseId/modules', async (req, res) => {
     res.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
     res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept');
 
+    // Validate course ID format
     if (!mongoose.Types.ObjectId.isValid(courseId)) {
       console.log('Invalid course ID format:', courseId);
       return res.status(400).json({
         error: 'Invalid course ID format',
-        details: 'The provided course ID is not valid'
+        details: 'The provided course ID is not valid',
+        receivedId: courseId
       });
     }
 
+    // Check database connection
+    if (mongoose.connection.readyState !== 1) {
+      console.log('Database not connected. Current state:', mongoose.connection.readyState);
+      return res.status(503).json({
+        error: 'Database not connected',
+        details: 'The database connection is not ready'
+      });
+    }
+
+    // Find course
     const course = await Course.findById(courseId).lean();
     if (!course) {
       console.log('Course not found:', courseId);
       return res.status(404).json({
         error: 'Course not found',
-        details: 'No course exists with the provided ID'
+        details: 'No course exists with the provided ID',
+        courseId
       });
     }
 
-    console.log('Found course:', course.title);
+    console.log('Found course:', {
+      id: course._id,
+      title: course.title,
+      moduleCount: course.modules?.length || 0
+    });
+
     const response = {
       modules: course.modules || [],
       count: course.modules?.length || 0,
       courseId: course._id,
-      courseTitle: course.title
+      courseTitle: course.title,
+      timestamp: new Date().toISOString()
     };
 
     return res.status(200).json(response);
 
   } catch (error) {
-    console.error('Error fetching modules:', error);
+    console.error('Error in GET /:courseId/modules:', error);
     return res.status(500).json({ 
       error: 'Error fetching modules',
-      details: error.message 
+      details: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 });
