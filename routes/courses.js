@@ -406,32 +406,42 @@ router.get('/:courseId/modules', async (req, res) => {
     const { courseId } = req.params;
     console.log('Fetching modules for course:', courseId);
 
-    // Add CORS headers
+    // Set proper headers
+    res.header('Content-Type', 'application/json');
     res.header('Access-Control-Allow-Origin', '*');
     res.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept');
 
     if (!mongoose.Types.ObjectId.isValid(courseId)) {
       console.log('Invalid course ID format:', courseId);
-      return res.status(400).json({ error: 'Invalid course ID format' });
+      return res.status(400).json({
+        error: 'Invalid course ID format',
+        details: 'The provided course ID is not valid'
+      });
     }
 
     const course = await Course.findById(courseId).lean();
     if (!course) {
       console.log('Course not found:', courseId);
-      return res.status(404).json({ error: 'Course not found' });
+      return res.status(404).json({
+        error: 'Course not found',
+        details: 'No course exists with the provided ID'
+      });
     }
 
     console.log('Found course:', course.title);
-    res.json({
+    const response = {
       modules: course.modules || [],
       count: course.modules?.length || 0,
       courseId: course._id,
       courseTitle: course.title
-    });
+    };
+
+    return res.status(200).json(response);
+
   } catch (error) {
     console.error('Error fetching modules:', error);
-    res.status(500).json({ 
+    return res.status(500).json({ 
       error: 'Error fetching modules',
       details: error.message 
     });

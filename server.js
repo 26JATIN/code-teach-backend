@@ -12,6 +12,12 @@ const allowedOrigins = [
   'http://localhost:3000'
 ];
 
+// Add middleware to ensure proper content type headers
+app.use((req, res, next) => {
+  res.header('Content-Type', 'application/json');
+  next();
+});
+
 const corsOptions = {
   origin: function (origin, callback) {
     // Allow requests with no origin (like mobile apps, curl, etc.)
@@ -23,7 +29,8 @@ const corsOptions = {
     }
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'ngrok-skip-browser-warning'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'ngrok-skip-browser-warning'],
+  exposedHeaders: ['Content-Type'],
   credentials: true,
   maxAge: 86400, // 24 hours
   optionsSuccessStatus: 200
