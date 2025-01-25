@@ -400,18 +400,12 @@ router.put('/:courseId/modules', async (req, res) => {
   }
 });
 
-// Get all modules of a course - moved before other routes
+// Get all modules of a course
 router.get('/:courseId/modules', async (req, res) => {
   try {
     const { courseId } = req.params;
-    console.log('Received request for modules:', {
-      courseId,
-      headers: req.headers,
-      path: req.path,
-      method: req.method
-    });
-
-    // Set response headers
+    
+    // Set proper headers
     res.set({
       'Content-Type': 'application/json',
       'Access-Control-Allow-Origin': '*',
@@ -419,45 +413,26 @@ router.get('/:courseId/modules', async (req, res) => {
       'Access-Control-Allow-Headers': 'Content-Type, Authorization, Accept'
     });
 
-    // Handle preflight
-    if (req.method === 'OPTIONS') {
-      return res.status(200).end();
-    }
-
-    // Validate course ID
     if (!mongoose.Types.ObjectId.isValid(courseId)) {
-      console.log('Invalid course ID:', courseId);
       return res.status(400).json({
         error: 'Invalid course ID',
-        details: 'The provided course ID is not valid',
-        receivedId: courseId
+        details: 'The provided course ID is not valid'
       });
     }
 
-    // Find course and ensure it exists
     const course = await Course.findById(courseId);
     if (!course) {
-      console.log('Course not found:', courseId);
       return res.status(404).json({
         error: 'Course not found',
-        details: 'No course exists with the provided ID',
-        courseId
+        details: 'No course exists with the provided ID'
       });
     }
 
-    console.log('Found course:', {
-      id: course._id,
-      title: course.title,
-      moduleCount: course.modules?.length || 0
-    });
-
-    // Return modules
-    return res.status(200).json({
+    return res.json({
       modules: course.modules || [],
       count: course.modules?.length || 0,
       courseId: course._id,
-      courseTitle: course.title,
-      timestamp: new Date().toISOString()
+      courseTitle: course.title
     });
 
   } catch (error) {
