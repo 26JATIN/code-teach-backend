@@ -4,6 +4,20 @@ const Course = require('../models/Course');
 const User = require('../models/User');
 const authenticateToken = require('../middleware/auth');
 const isAdmin = require('../middleware/isAdmin');
+const mongoose = require('mongoose');
+
+// Middleware to set CORS headers
+const setCorsHeaders = (req, res, next) => {
+  res.set({
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, Accept'
+  });
+  next();
+};
+
+// Apply CORS headers to all admin routes
+router.use(setCorsHeaders);
 
 // Apply authentication and admin middleware to all routes
 router.use(authenticateToken, isAdmin);
