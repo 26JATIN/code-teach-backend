@@ -37,6 +37,16 @@ router.get('/', async (req, res) => {
   }
 });
 
+// Get all courses (alternative endpoint for module manager)
+router.get('/all', async (req, res) => {
+  try {
+    const courses = await Course.find({}).select('_id title shortName category language totalModules');
+    res.json(courses);
+  } catch (error) {
+    res.status(500).json({ error: 'Error fetching courses' });
+  }
+});
+
 // Enroll in a course
 router.post('/enroll/:courseId', authenticateToken, async (req, res) => {
   try {
@@ -212,6 +222,18 @@ router.put('/progress/:courseId', authenticateToken, async (req, res) => {
           availableEnrollments: user.enrolledCourses.map(e => e.course?.toString())
         }
       });
+    }
+
+    // Clean up duplicate progress entries
+    if (courseEnrollment.moduleProgress && courseEnrollment.moduleProgress.length > 0) {
+      const uniqueProgress = new Map();
+      courseEnrollment.moduleProgress.forEach(p => {
+        const key = `${p.moduleId}-${p.subModuleId}`;
+        if (!uniqueProgress.has(key) || p.completed) {
+          uniqueProgress.set(key, p);
+        }
+      });
+      courseEnrollment.moduleProgress = Array.from(uniqueProgress.values());
     }
 
     // Initialize or update module progress

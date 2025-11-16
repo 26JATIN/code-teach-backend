@@ -21,6 +21,13 @@ const moduleProgressSchema = new mongoose.Schema({
   lastVisited: {
     type: Date,
     default: Date.now
+  },
+  archived: {
+    type: Boolean,
+    default: false
+  },
+  archivedAt: {
+    type: Date
   }
 });
 
@@ -91,26 +98,39 @@ enrollmentSchema.pre('save', async function(next) {
 
 // Add method to update module progress
 enrollmentSchema.methods.updateModuleProgress = async function(moduleId, subModuleId) {
+  // Find existing progress entry
   const moduleProgress = this.moduleProgress.find(
     p => p.moduleId === moduleId && p.subModuleId === subModuleId
   );
 
   if (moduleProgress) {
-    moduleProgress.completed = true;
-    moduleProgress.completedAt = new Date();
+    // Update existing entry
+    if (!moduleProgress.completed) {
+      moduleProgress.completed = true;
+      moduleProgress.completedAt = new Date();
+    }
     moduleProgress.lastVisited = new Date();
   } else {
+    // Add new progress entry
     this.moduleProgress.push({
       moduleId,
       subModuleId,
       completed: true,
-      completedAt: new Date()
+      completedAt: new Date(),
+      lastVisited: new Date()
     });
   }
 
   // Update completion stats
   this.completedModules = this.moduleProgress.filter(p => p.completed).length;
-  this.progress = Math.round((this.completedModules / this.totalModules) * 100);
+  
+  // Cap progress at 100% to prevent validation errors
+  if (this.totalModules > 0) {
+    this.progress = Math.min(100, Math.round((this.completedModules / this.totalModules) * 100));
+  } else {
+    this.progress = 0;
+  }
+  
   this.lastAccessed = new Date();
 };
 

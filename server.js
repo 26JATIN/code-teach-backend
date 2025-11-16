@@ -8,7 +8,10 @@ const app = express();
 // CORS configuration
 const allowedOrigins = [
   'https://code-teach.vercel.app',
-  'https://code-teach-backend.vercel.app/'
+  'https://code-teach-backend.vercel.app/',
+  'http://localhost:3000',
+  'http://localhost:3001',
+  /^http:\/\/localhost:\d+$/ // Allow any localhost port for development
 ];
 
 
@@ -208,6 +211,8 @@ app.use('/auth', require('./routes/auth'));
 app.use('/api/courses', require('./routes/courses'));
 app.use('/api/contact', require('./routes/contact'));
 app.use('/admin', require('./routes/admin')); // Add admin routes
+app.use('/api/modules', require('./routes/modules')); // Add modules routes
+app.use('/api/progress', require('./routes/progress')); // Add progress tracking routes
 
 // Error handling middleware
 app.use((err, req, res, next) => {
