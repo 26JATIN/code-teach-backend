@@ -423,9 +423,17 @@ router.put('/:moduleId', async (req, res) => {
     
     // Handle mongoose validation errors
     if (error.name === 'ValidationError') {
-      const messages = Object.values(error.errors).map(err => err.message);
+      const messages = Object.values(error.errors).map(err => ({
+        field: err.path,
+        message: err.message,
+        value: err.value
+      }));
       console.error('Validation errors:', messages);
-      return res.status(400).json({ error: 'Validation failed', details: messages });
+      return res.status(400).json({ 
+        error: 'Validation failed', 
+        details: messages.map(m => `${m.field}: ${m.message}`).join(', '),
+        fields: messages
+      });
     }
     
     // Handle cast errors (invalid ObjectId)
