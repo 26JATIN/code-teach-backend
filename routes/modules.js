@@ -316,11 +316,28 @@ router.get('/structure', async (req, res) => {
 router.post('/', async (req, res) => {
   try {
     const moduleData = req.body;
-    const { courseId } = moduleData;
+    const { courseId, title, id } = moduleData;
+
+    // Validate required fields
+    if (!courseId) {
+      return res.status(400).json({ error: 'Course ID is required' });
+    }
+    if (!title || !title.trim()) {
+      return res.status(400).json({ error: 'Module title is required' });
+    }
+    if (!id) {
+      return res.status(400).json({ error: 'Module ID is required' });
+    }
 
     const course = await Course.findById(courseId);
     if (!course) {
       return res.status(404).json({ error: 'Course not found' });
+    }
+
+    // Check if module with same id exists for this course
+    const existingModule = await Module.findOne({ courseId, id });
+    if (existingModule) {
+      return res.status(400).json({ error: 'Module with this ID already exists for this course' });
     }
 
     const module = new Module(moduleData);
@@ -335,6 +352,13 @@ router.post('/', async (req, res) => {
     });
   } catch (error) {
     console.error('Error creating module:', error);
+    
+    // Handle mongoose validation errors
+    if (error.name === 'ValidationError') {
+      const messages = Object.values(error.errors).map(err => err.message);
+      return res.status(400).json({ error: 'Validation failed', details: messages });
+    }
+    
     res.status(500).json({ error: 'Error creating module', details: error.message });
   }
 });
@@ -345,28 +369,71 @@ router.put('/:moduleId', async (req, res) => {
     const { moduleId } = req.params;
     const updates = req.body;
 
-    const module = await Module.findByIdAndUpdate(
-      moduleId,
-      updates,
-      { new: true, runValidators: true }
-    );
+    console.log('Updating module:', moduleId);
+    console.log('Update payload:', JSON.stringify(updates, null, 2));
 
-    if (!module) {
+    // Validate moduleId
+    if (!moduleId || moduleId === 'undefined') {
+      return res.status(400).json({ error: 'Valid module ID is required' });
+    }
+
+    // Validate required fields in updates
+    if (updates.title && !updates.title.trim()) {
+      return res.status(400).json({ error: 'Module title cannot be empty' });
+    }
+
+    // Find the existing module first
+    const existingModule = await Module.findById(moduleId);
+    if (!existingModule) {
       return res.status(404).json({ error: 'Module not found' });
     }
 
+    console.log('Existing module found:', existingModule.title);
+
+    // Update fields
+    existingModule.title = updates.title || existingModule.title;
+    existingModule.description = updates.description !== undefined ? updates.description : existingModule.description;
+    existingModule.order = updates.order !== undefined ? updates.order : existingModule.order;
+    existingModule.icon = updates.icon || existingModule.icon;
+    existingModule.isPublished = updates.isPublished !== undefined ? updates.isPublished : existingModule.isPublished;
+
+    // Handle subModules update carefully
+    if (updates.subModules) {
+      console.log(`Updating ${updates.subModules.length} submodules`);
+      existingModule.subModules = updates.subModules;
+    }
+
+    // Save with validation
+    await existingModule.save();
+    console.log('Module saved successfully');
+
     // Update course statistics
-    const course = await Course.findById(module.courseId);
+    const course = await Course.findById(existingModule.courseId);
     if (course) {
       await course.updateStatisticsFromModules();
+      console.log('Course statistics updated');
     }
 
     res.json({
       message: 'Module updated successfully',
-      module
+      module: existingModule
     });
   } catch (error) {
     console.error('Error updating module:', error);
+    
+    // Handle mongoose validation errors
+    if (error.name === 'ValidationError') {
+      const messages = Object.values(error.errors).map(err => err.message);
+      console.error('Validation errors:', messages);
+      return res.status(400).json({ error: 'Validation failed', details: messages });
+    }
+    
+    // Handle cast errors (invalid ObjectId)
+    if (error.name === 'CastError') {
+      console.error('Cast error:', error.message);
+      return res.status(400).json({ error: 'Invalid module ID format' });
+    }
+    
     res.status(500).json({ error: 'Error updating module', details: error.message });
   }
 });
